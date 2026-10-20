@@ -51,9 +51,11 @@ export function httpRequest(req: HttpRequest): Promise<HttpResponse> {
     const u = new URL(req.url);
     const mod = u.protocol === 'https:' ? https : http;
     const max = req.maxResponseBytes ?? 256 * 1024;
+    const body = req.body === undefined ? undefined : typeof req.body === 'string' ? Buffer.from(req.body) : req.body;
     const options: https.RequestOptions = {
       method: req.method.toUpperCase(),
-      headers: { 'user-agent': 'secret-intake-mcp', ...(req.headers ?? {}) },
+      // explicit length: Node does not chunk-encode bodies of DELETE/GET by default
+      headers: { 'user-agent': 'secret-intake-mcp', ...(req.headers ?? {}), ...(body ? { 'content-length': String(body.length) } : {}) },
       timeout: req.timeoutMs ?? 30_000,
     };
     if (req.caFile) options.ca = readFileSync(expandHome(req.caFile));
@@ -80,7 +82,7 @@ export function httpRequest(req: HttpRequest): Promise<HttpResponse> {
     });
     r.on('timeout', () => r.destroy(new UserError('HTTP request timed out', 'timeout')));
     r.on('error', (e) => reject(e instanceof UserError ? e : new UserError(`HTTP request failed (${(e as NodeJS.ErrnoException).code ?? 'network'})`, 'network')));
-    if (req.body !== undefined) r.end(req.body);
+    if (body) r.end(body);
     else r.end();
   });
 }
