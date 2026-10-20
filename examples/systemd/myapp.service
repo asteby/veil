@@ -1,0 +1,28 @@
+# Example: run an app whose secrets live in an ENCRYPTED .env deployed as is.
+# The key is NOT in the repo nor next to the .env: systemd hands it to the service as a
+# credential (LoadCredential=), readable only by this unit, and `veilform run` decrypts the
+# values in memory and injects them into the app's environment. Nothing plaintext on disk.
+#
+#   scp .env.production server:/etc/myapp/.env.production          (ciphertext, fine to keep in git)
+#   install -m 0400 -o root myapp.key /etc/veilform/myapp.key      (out of band, never in git)
+#   systemctl daemon-reload && systemctl restart myapp
+[Unit]
+Description=My app (secrets from an encrypted .env, unlocked by veilform at start)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=myapp
+Environment=VEILFORM_HOME=/var/lib/myapp/veilform
+LoadCredential=veilform-key:/etc/veilform/myapp.key
+ExecStart=/usr/bin/veilform run --env /etc/myapp/.env.production -- /usr/bin/node /srv/myapp/server.js
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

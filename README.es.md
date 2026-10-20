@@ -24,7 +24,7 @@ Después el agente escribe `${secret:STRIPE_KEY}` y este servidor lo resuelve **
 
 ## Instalación
 
-Requisitos: Node ≥ 20.11. En Linux el destino `keychain` usa `secret-tool` (paquete `libsecret-tools`); macOS usa `security`. Opcionales: `playwright-core` + Chromium (`web_capture`), `psql` (sinks SQL), `gh` (secretos de GitHub), OpenSSH.
+Requisitos: Node ≥ 20.11 — nada más. Se usa el llavero del sistema cuando funciona (Linux: `secret-tool` del paquete `libsecret-tools` + GNOME Keyring/KWallet; macOS: `security`); si no funciona, Veil usa su propio almacén cifrado y no hace falta instalar nada (ver [Primer uso](#primer-uso)). Opcionales: `playwright-core` + Chromium (`web_capture`), `psql` (sinks SQL), `gh` (secretos de GitHub), OpenSSH. `veilform doctor` dice exactamente qué falta y el comando para instalarlo.
 
 ```bash
 pnpm install && pnpm build
@@ -32,9 +32,49 @@ claude mcp add veilform -- node /ruta/a/veilform/dist/cli.js
 # cuando esté publicado:  claude mcp add veilform -- npx -y veilform
 ```
 
+## Primer uso
+
+```bash
+npx veilform init          # publicado como @asteby/veil: npx @asteby/veil init
+```
+
+`init` ejecuta el diagnóstico, muestra un plan y, cuando confirmas (`--yes` para no preguntar, `--dry-run` para solo verlo), aplica **solo cambios de tu usuario**: crea `~/.config/veilform` (0700), corrige permisos y escribe un `config.json` cuyo destino por defecto **funciona sin instalar nada**:
+
+- Llavero del sistema utilizable → `local` = llavero con `fallback: "auto"` (si el llavero falla después, los valores van al almacén cifrado de Veil).
+- Llavero ausente, bloqueado o no soportado → `local` = almacén cifrado de Veil (`encrypted-file` con `key: {source: "master"}`, archivo `~/.config/veilform/local-vault.json`).
+
+Nunca ejecuta `sudo` ni pide secretos. Los comandos que necesitan privilegios (p. ej. `sudo apt install -y libsecret-tools`) se imprimen para que los copies. El `postinstall` opcional solo muestra una pista; con `VEILFORM_POSTINSTALL=init` ejecuta `init --dry-run` al instalar.
+
+**El almacén cifrado de Veil** es un solo archivo en el formato `encrypted-file` existente: AES-256-GCM por valor (el nombre va como AAD), llave derivada con argon2id (Node ≥ 24.7; si no, scrypt N=2^17) de una **contraseña maestra**:
+
+1. La primera vez que un valor tiene que ir ahí, la página local (127.0.0.1) te pide **definir la contraseña maestra ahí mismo** — nunca en el chat, en argumentos MCP ni en argv. También puedes hacerlo antes: `veilform unlock`, `veilform init --master` o la herramienta MCP `local_unlock`.
+2. Al desbloquear solo se guarda en memoria la **llave derivada**: en el agente de sesión (`veilform agent`) si está activo — entonces todos los procesos de Veil la comparten y `veilform lock` la olvida — o dentro del proceso MCP durante `localVault.unlockMinutes` (15 por defecto).
+3. Más adelante, cuando el llavero funcione, puedes guardar ahí la llave derivada para abrir el almacén sin escribir la contraseña: `veilform unlock --save-keychain` (`--forget-keychain` lo deshace). `veilform unlock --change-password` vuelve a cifrar todo con otra contraseña.
+4. Nunca se escribe texto plano en disco; los valores y la contraseña maestra se registran en la lista de borrado antes que nada y nunca llegan a respuestas, logs ni a la auditoría.
+
+> **Si olvidas la contraseña maestra los datos no se pueden recuperar** — es intencional, no hay puerta trasera. Guárdala en tu gestor de contraseñas o en papel y respalda `local-vault.json` (sin la contraseña no sirve de nada). Para una copia cifrada fuera de la máquina usa `veilform export` / `vault_sync`.
+
+Si el destino por defecto es el llavero y falla durante un `secret_request`, la página **ofrece continuar con el almacén cifrado** (pidiendo — o creando — la contraseña maestra en esa misma página) en vez de fallar, y muestra el comando exacto para arreglar el llavero de forma permanente. Pon `fallback: "never"` en un destino `keychain` para prohibirlo.
+
+## Solución de problemas
+
+Ejecuta `veilform doctor` (o la herramienta MCP de solo lectura `doctor`; `--json` para máquinas). Revisa Node/cripto (argon2id), el backend de llavero (secret-tool, sesión D-Bus, proveedor de Secret Service y si el llavero por defecto está desbloqueado en Linux; `security` en macOS; en Windows el backend de Credential Manager está previsto y se usa el almacén cifrado), el destino por defecto, el almacén cifrado y el agente de sesión, los permisos de `~/.config/veilform`, y ssh/git/gh/psql/Chromium para las funciones que los usan. Cada problema trae su impacto y el comando exacto para tu distribución (apt, dnf, pacman, zypper, apk, brew, winget). No ejecuta nada con privilegios ni pide nada secreto.
+
+Los errores son estructurados — `{error, code, help:{en,es}, fix:{en,es,command, alternative}}` — en las respuestas MCP, y traducidos en la página local:
+
+| Código | Qué pasa | Arreglo |
+|---|---|---|
+| `keychain_unavailable` | `secret-tool` no instalado (`reason: missing_tool`), sin sesión D-Bus (`no_dbus`, SSH/sin escritorio) o sin Secret Service (`no_service`) | `sudo apt install -y libsecret-tools` (o dnf/pacman/…), `dbus-run-session -- $SHELL`, `gnome-keyring-daemon --start --components=secrets` — o `veilform init` |
+| `keychain_locked` | el llavero está bloqueado o esperando un diálogo de desbloqueo | desbloquea "Inicio de sesión" en Contraseñas y claves (`seahorse`); macOS: `security unlock-keychain` |
+| `keychain_unsupported` | aún no hay backend de llavero en este SO (Windows) | `veilform init` (almacén cifrado) |
+| `passphrase_required` | el almacén cifrado está bloqueado | MCP `local_unlock` o `veilform unlock` |
+| `master_password_not_set` | el almacén cifrado aún no tiene contraseña maestra | defínela en la página local (`veilform unlock`) |
+| `destination_not_configured` | el destino no está en `config.json` | `veilform init` o agrégalo |
+| `wrong_key` / `too_many_attempts` | contraseña maestra incorrecta / bloqueo temporal tras 5 fallos | reintenta más tarde |
+
 Variables opcionales: `VEILFORM_HOME` (por defecto `~/.config/veilform`), `VEILFORM_CONFIG`, `VEILFORM_AGENT` (etiqueta que se escribe en la auditoría).
 
-La configuración es una **allowlist**: copia [`examples/config.example.json`](examples/config.example.json) a `~/.config/veilform/config.json` y deja solo lo necesario. Sin archivo hay un único destino, `local` (llavero del SO). Verifícala con `veilform check-config`.
+La configuración es una **allowlist**: copia [`examples/config.example.json`](examples/config.example.json) a `~/.config/veilform/config.json` y deja solo lo necesario. Sin archivo hay un único destino, `local` (llavero del SO con `fallback: "ask"`: si el llavero falla, la página ofrece el almacén cifrado de Veil). Verifícala con `veilform check-config` y `veilform doctor`.
 
 Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las herramientas propias del agente lo que este servidor protege, p. ej. `"deny": ["Read(~/.config/veilform/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 
@@ -79,3 +119,34 @@ Desviaciones del diseño original (documentadas): el llavero usa los CLI del sis
 ## Licencia
 
 [MIT](LICENSE)
+
+## Sync y compartir
+
+*(respaldo/sincronización cifrados, compartir por token y archivos `.env` cifrados — añadido en 0.2.0)*
+
+**Nuevas herramientas MCP** (devuelven solo nombres, conteos e ids; las passphrases y los tokens se escriben/muestran en la página local):
+
+| Herramienta | Qué hace |
+|---|---|
+| `vault_export` / `vault_sync` / `vault_import` / `vault_rekey` | Bundle cifrado de la bóveda a un archivo `.vfb` o a un destino; restauración con integridad, anti-rollback y detección de conflictos; rotación de la KEK |
+| `share_create` / `share_list` / `share_revoke` / `share_import` | Compartir secretos elegidos por token (caducidad, máximo de lecturas, passphrase opcional); revocar (+ rotar); importar a ciegas en la bóveda de otro agente |
+| `env_status` / `env_unlock` / `env_encrypt` / `env_edit` / `env_diff` / `env_rotate` | `.env` cifrados aptos para git; `secret_use({env_file})` y `secret_write({from:{kind:"env-enc"}})` los usan sin que el modelo vea valores |
+
+**Bundle** (`manifest.json` + `o/<id aleatorio>` por secreto, o un solo `.vfb`): una llave de datos (DEK) AES-256-GCM aleatoria por secreto, envuelta por una KEK = HKDF(argon2id/scrypt(passphrase) ‖ archivo de llave / llavero opcional). Nombres y metadatos viven solo en el índice cifrado; la cabecera (versión, id del bundle, `seq` monótono, parámetros de llave, sha256 de cada objeto) es el AAD del índice: bundles con objetos intercambiados, truncados, editados o antiguos (rollback) se rechazan. Cada secreto lleva un reloj vectorial: `vault_sync` nunca sobrescribe en silencio un cambio concurrente (`strategy`: `report`, `keep-local`, `take-remote`, `keep-both`).
+
+**Destinos** (`sync.targets` en la config, lista permitida): `dir`, `ssh` (host de `ssh.hosts`), `git` (repo privado; `git` por argv, credenciales de tu ssh-agent/credential helper), `s3` (S3/R2/MinIO, SigV4 propio), `webdav`, `http`. Las credenciales de los destinos son referencias al almacén local (`tokenRef`, `accessKeyRef`…), nunca en línea. Ejemplo de configuración en la sección en inglés.
+
+**Token** = `vfs1://<destino>/<share_id>#<llave>` — la llave va en el fragmento de la URL (nunca se envía a un servidor). Con `require_passphrase` el bundle se cifra con HKDF(llave ‖ argon2id(passphrase)); la caducidad y el máximo de lecturas van en la cabecera autenticada. Una persona lo abre con `veilform share open` (página local, token en el fragmento o pegado, valores ocultos de nuevo a los N s); otro agente usa `share_import({token_file})` y después `secret_use`.
+
+**`.env` cifrado** (cabecera `#/veilform-env v1`, `CLAVE="enc:v1:…"` por valor, comentarios/orden conservados, MAC de todo el archivo, N destinatarios):
+
+```bash
+veilform env keygen ~/.config/veilform/keys/miapp.key        # 0600, fuera del repo
+veilform env encrypt .env.production --key-file ~/.config/veilform/keys/miapp.key   # + passphrase por TTY
+veilform env hook install                                     # el pre-commit rechaza .env en claro
+veilform run --env .env.production -- node server.js           # valores solo en el entorno del hijo; salida redactada
+veilform env unlock .env.production --status                  # qué métodos de desbloqueo sirven aquí (sin valores)
+veilform env share .env.production --expires 1h --max-views 1 # token que desbloquea SOLO este archivo
+```
+
+Métodos de desbloqueo: archivo de llave (`--key-file`, `VEILFORM_KEY_FILE`, `env.keyFiles`), llavero del SO (`env.keychain`), credencial de systemd (`LoadCredential=veilform-key:…`, ver [`examples/systemd/`](examples/systemd/)), agente de sesión (`veilform agent`, `veilform lock`), passphrase (TTY o página local, intentos limitados), token de compartir. Límites y comparación con age/sops/1Password/Vault: [THREAT-MODEL.md §8](THREAT-MODEL.md#8-sync-sharing-and-encrypted-env-files).

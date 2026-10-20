@@ -24,16 +24,45 @@ export interface ApprovalInfo {
 }
 
 export interface SubmitPayload {
-  action: 'submit' | 'cancel' | 'approve' | 'deny';
+  /** 'reveal' = ask for values to be shown on THIS page only (never terminal). */
+  action: 'submit' | 'cancel' | 'approve' | 'deny' | 'reveal';
   values?: Record<string, unknown>;
   remember?: boolean;
   confirm?: boolean;
   edited?: string;
+  /** master password for Veil's encrypted store, typed on this page (create or unlock) */
+  fallback?: { passphrase?: string; passphrase2?: string };
+}
+
+/** Localized, value-free fix shown on the page. */
+export interface PageFix {
+  text: string;
+  command?: string;
+  alternative?: { text: string; command?: string };
+}
+
+/** The OS keychain failed: offer Veil's encrypted store right on the page. */
+export interface FallbackOffer {
+  reason: string;
+  /** create = define the master password now; unlock = type it; confirm = already unlocked, consent only */
+  mode: 'create' | 'unlock' | 'confirm';
+  problem: string;
+  fix?: PageFix;
+  minLength: number;
+  unlockMinutes: number;
+  path: string;
+}
+
+/** Values shown only on the local page, with copy buttons, hidden again after `hideAfter` seconds. */
+export interface RevealInfo {
+  items: { label: string; value: string }[];
+  hideAfter: number;
+  note?: string;
 }
 
 export type SubmitResult =
-  | { ok: true; message?: string; clipboard?: { value: string; clearAfter: number } }
-  | { ok: false; errors?: FieldError[]; message?: string };
+  | { ok: true; message?: string; clipboard?: { value: string; clearAfter: number }; reveal?: RevealInfo }
+  | { ok: false; errors?: FieldError[]; message?: string; fix?: PageFix; fallback?: FallbackOffer };
 
 export interface PageSpec {
   kind: PageKind;
@@ -46,6 +75,10 @@ export interface PageSpec {
   approval?: ApprovalInfo;
   submitLabel?: string;
   clipboardSeconds?: number;
+  /** form field filled from the URL fragment (#...) on load; the fragment is then removed from history */
+  fragmentField?: string;
+  /** label of a button that posts action 'reveal' (e.g. show current values) */
+  revealLabel?: string;
   ttlMs: number;
   handle(p: SubmitPayload, lang: Lang): Promise<SubmitResult>;
   onExpire?(): void;
@@ -261,7 +294,7 @@ export class UiServer {
       return this.send(res, 400, 'application/json', JSON.stringify({ ok: false }));
     }
     if (!safeEqual(body.csrf, page.csrf)) return this.send(res, 403, 'application/json', JSON.stringify({ ok: false, message: 'bad csrf' }));
-    if (!['submit', 'cancel', 'approve', 'deny'].includes(body.action)) return this.send(res, 400, 'application/json', JSON.stringify({ ok: false }));
+    if (!['submit', 'cancel', 'approve', 'deny', 'reveal'].includes(body.action)) return this.send(res, 400, 'application/json', JSON.stringify({ ok: false }));
     if (page.spec.kind === 'preview') return this.send(res, 403, 'application/json', JSON.stringify({ ok: false }));
     if (page.busy) return this.send(res, 409, 'application/json', JSON.stringify({ ok: false }));
     page.busy = true;
@@ -273,7 +306,7 @@ export class UiServer {
     } finally {
       page.busy = false;
     }
-    const terminal = result.ok || body.action === 'cancel' || body.action === 'deny' || (!result.ok && !result.errors);
+    const terminal = body.action !== 'reveal' && (result.ok || body.action === 'cancel' || body.action === 'deny' || (!result.ok && !result.errors && !result.fallback));
     if (terminal) {
       page.done = true;
       clearTimeout(page.timer);
@@ -303,6 +336,8 @@ export class UiServer {
       destination: s.destination,
       approval: s.approval,
       submitLabel: s.submitLabel,
+      fragmentField: s.fragmentField,
+      revealLabel: s.revealLabel,
     };
     const other = lang === 'es' ? 'en' : 'es';
     const heading = s.kind === 'approval' ? t.approvalTitle : s.kind === 'clipboard' ? t.clipboardTitle : '';

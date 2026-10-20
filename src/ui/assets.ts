@@ -71,6 +71,18 @@ pre.literal { background: var(--code-bg); border: 1px solid var(--border); borde
 .status.ok { background: var(--ok-bg); color: var(--ok); }
 .status.err { background: var(--danger-bg); color: var(--danger); }
 .banner { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 14px; margin-top: 12px; }
+.reveal { background: var(--warn-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin: 12px 0; }
+.reveal-item { margin: 10px 0; }
+.reveal-item .label { font-weight: 600; }
+code.secret-val { display: block; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 4px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+.reveal-item .actions { margin-top: 4px; }
+.fallback { background: var(--warn-bg); border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: 8px; padding: 12px 14px; margin-top: 16px; }
+.fallback h2 { color: var(--warn); }
+.fallback .offer { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
+.fix { margin-top: 12px; }
+.cmd { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 6px 0; }
+.cmd code { flex: 1; min-width: 0; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+.backup { background: var(--danger-bg); color: var(--danger); border-radius: 8px; padding: 10px 14px; margin: 10px 0; font-size: .92rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 [hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -450,7 +462,7 @@ export const CLIENT_JS = String.raw`
     clearErrors();
     var first = null;
     errs.forEach(function (er) {
-      var node = er.field === '__confirm' ? confirmNode : nodeForPath(er.field);
+      var node = er.field === '__confirm' ? confirmNode : er.field === '__fallback' ? fallbackNode : nodeForPath(er.field);
       if (!node) return;
       node.errEl.textContent = T['err_' + er.code] || T.err_type;
       if (node.focusTarget && node.focusTarget.setAttribute) node.focusTarget.setAttribute('aria-invalid', 'true');
@@ -464,6 +476,28 @@ export const CLIENT_JS = String.raw`
   // ---------------------------------------------------------------- render
   var statusEl = el('div', { role: 'status', 'aria-live': 'polite' });
   var confirmNode = null;
+  var fallbackNode = null;
+
+  function cmdBox(command) {
+    var code = el('code', { text: command });
+    var cp = el('button', { type: 'button', text: T.copyCmd });
+    cp.addEventListener('click', function () {
+      navigator.clipboard.writeText(command).then(function () { cp.textContent = T.copiedShort; }, function () { cp.textContent = T.copyFailed; });
+    });
+    return el('div', { class: 'cmd' }, [code, cp]);
+  }
+
+  // Value-free fix (text + exact command) shown when something can be repaired by the person.
+  function fixBox(fix) {
+    if (!fix) return null;
+    var box = el('div', { class: 'fix' }, [el('h2', { text: T.fixTitle }), el('p', { text: fix.text })]);
+    if (fix.command) box.appendChild(cmdBox(fix.command));
+    if (fix.alternative) {
+      box.appendChild(el('p', null, [el('strong', { text: T.alternative + ': ' }), fix.alternative.text]));
+      if (fix.alternative.command) box.appendChild(cmdBox(fix.alternative.command));
+    }
+    return box;
+  }
 
   function post(body) {
     return fetch(data.action, {
@@ -475,9 +509,9 @@ export const CLIENT_JS = String.raw`
     }).then(function (r) { return r.json(); });
   }
 
-  function finish(message, ok) {
+  function finish(message, ok, fix) {
     root.textContent = '';
-    root.appendChild(el('div', { class: 'card' }, [el('div', { class: 'status ' + (ok ? 'ok' : 'err'), role: 'status', text: message })]));
+    root.appendChild(el('div', { class: 'card' }, [el('div', { class: 'status ' + (ok ? 'ok' : 'err'), role: 'status', text: message }), fixBox(fix)]));
     fileCache = {};
   }
 
@@ -520,30 +554,149 @@ export const CLIENT_JS = String.raw`
     if (dest) form.appendChild(dest);
     var submit = el('button', { type: 'submit', class: 'primary', text: data.submitLabel || T.submit, disabled: data.preview ? true : null });
     var cancel = el('button', { type: 'button', text: T.cancel, disabled: data.preview ? true : null });
-    form.appendChild(el('div', { class: 'actions' }, [submit, cancel]));
+    var revealBtn = null;
+    if (data.revealLabel) {
+      revealBtn = el('button', { type: 'button', text: data.revealLabel });
+      revealBtn.addEventListener('click', function () {
+        revealBtn.disabled = true;
+        post({ action: 'reveal' }).then(function (res) { revealBtn.disabled = false; if (res.ok && res.reveal) showReveal(res.reveal, false); }, function () { revealBtn.disabled = false; });
+      });
+    }
+    var actionsRow = el('div', { class: 'actions' }, [submit, revealBtn, cancel]);
+    form.appendChild(actionsRow);
     form.appendChild(statusEl);
     cancel.addEventListener('click', function () {
       post({ action: 'cancel' }).then(function () { finish(T.cancelled, false); }, function () { finish(T.networkError, false); });
     });
+    var fbSection = null, fbBtn = null;
+    function send(extra) {
+      var values = {};
+      Object.keys(fieldEls).forEach(function (k) { if (!fieldEls[k].hidden) values[k] = fieldEls[k].getValue(); });
+      submit.disabled = true; if (fbBtn) fbBtn.disabled = true;
+      post(Object.assign({ action: 'submit', values: values, confirm: confirmNode ? confirmNode.input.checked : undefined, remember: confirmNode && confirmNode.remember ? confirmNode.remember.checked : false }, extra || {}))
+        .then(function (res) {
+          submit.disabled = false; if (fbBtn) fbBtn.disabled = false;
+          values = null;
+          if (res.ok) { if (res.reveal) showReveal(res.reveal, true); else finish(res.message || T.saved, true); }
+          else if (res.fallback) showFallback(res.fallback);
+          else if (res.errors) showErrors(res.errors);
+          else finish(res.message || T.expired, false, res.fix);
+        }, function () { submit.disabled = false; if (fbBtn) fbBtn.disabled = false; statusEl.className = 'status err'; statusEl.textContent = T.networkError; });
+    }
+    // The OS keychain failed: offer Veil's encrypted store right here (master password typed on this page).
+    function showFallback(fb) {
+      if (fbSection) fbSection.parentNode.removeChild(fbSection);
+      fbSection = el('section', { class: 'fallback', 'aria-labelledby': 'fb-h' }, [el('h2', { id: 'fb-h', text: T.fbTitle }), el('p', { text: fb.problem })]);
+      if (fb.fix) {
+        fbSection.appendChild(el('p', { text: T.fbFixLabel }));
+        if (fb.fix.text) fbSection.appendChild(el('p', { class: 'help', text: fb.fix.text }));
+        if (fb.fix.command) fbSection.appendChild(cmdBox(fb.fix.command));
+      }
+      var offer = el('div', { class: 'offer' });
+      offer.appendChild(el('p', { text: fb.mode === 'create' ? T.fbOfferCreate : fb.mode === 'unlock' ? T.fbOfferUnlock : T.fbOfferConfirm }));
+      var p1 = null, p2 = null, ack = null;
+      var err = el('div', { class: 'error', 'aria-live': 'polite' });
+      if (fb.mode !== 'confirm') {
+        p1 = el('input', { type: 'password', id: 'si-master', autocomplete: fb.mode === 'create' ? 'new-password' : 'current-password', spellcheck: 'false', autocapitalize: 'off', 'aria-describedby': 'si-master-help' });
+        offer.appendChild(el('div', { class: 'field' }, [el('label', { for: 'si-master', text: T.fbPass }), p1, el('div', { class: 'help', id: 'si-master-help', text: fb.mode === 'create' ? fmt(T.fbPassHelp, fb.minLength) : fmt(T.fbUnlockFor, fb.unlockMinutes) })]));
+      }
+      if (fb.mode === 'create') {
+        p2 = el('input', { type: 'password', id: 'si-master2', autocomplete: 'new-password', spellcheck: 'false', autocapitalize: 'off' });
+        offer.appendChild(el('div', { class: 'field' }, [el('label', { for: 'si-master2', text: T.fbPass2 }), p2]));
+        offer.appendChild(el('p', { class: 'backup', role: 'note', text: T.fbBackup }));
+        ack = el('input', { type: 'checkbox', id: 'si-master-ack' });
+        offer.appendChild(el('div', { class: 'check' }, [ack, el('label', { for: 'si-master-ack', text: T.fbAck })]));
+        offer.appendChild(el('p', { class: 'meta', text: fmt(T.fbUnlockFor, fb.unlockMinutes) }));
+      }
+      offer.appendChild(el('p', { class: 'meta' }, [T.fbFile + ': ', el('code', { text: fb.path })]));
+      offer.appendChild(err);
+      fbBtn = el('button', { type: 'button', class: 'primary', text: T.fbSubmit });
+      offer.appendChild(el('div', { class: 'actions' }, [fbBtn]));
+      fbSection.appendChild(offer);
+      fallbackNode = { focusTarget: p1 || fbBtn, errEl: err };
+      offer.addEventListener('input', function () {
+        err.textContent = '';
+        if (p1) p1.removeAttribute('aria-invalid');
+        statusEl.className = ''; statusEl.textContent = '';
+      });
+      fbBtn.addEventListener('click', function () {
+        clearErrors();
+        if (p1 && !p1.value) return showErrors([{ field: '__fallback', code: 'required' }]);
+        if (fb.mode === 'create') {
+          if (p1.value.length < fb.minLength) return showErrors([{ field: '__fallback', code: 'weak' }]);
+          if (p1.value !== p2.value) return showErrors([{ field: '__fallback', code: 'mismatch' }]);
+          if (!ack.checked) return showErrors([{ field: '__fallback', code: 'ack' }]);
+        }
+        var fbv = { passphrase: p1 ? p1.value : '', passphrase2: p2 ? p2.value : undefined };
+        if (p1) p1.value = '';
+        if (p2) p2.value = '';
+        send({ fallback: fbv });
+        fbv = null;
+      });
+      submit.hidden = true;
+      actionsRow.parentNode.insertBefore(fbSection, actionsRow);
+      statusEl.className = 'status err';
+      statusEl.textContent = fb.problem;
+      if (p1) p1.focus(); else fbBtn.focus();
+    }
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
       if (data.preview) return;
       var errs = clientErrors();
       if (confirmNode && !confirmNode.input.checked) errs.push({ field: '__confirm', code: 'confirm' });
       if (errs.length) { showErrors(errs); return; }
-      var values = {};
-      Object.keys(fieldEls).forEach(function (k) { if (!fieldEls[k].hidden) values[k] = fieldEls[k].getValue(); });
-      submit.disabled = true;
-      post({ action: 'submit', values: values, confirm: confirmNode ? confirmNode.input.checked : undefined, remember: confirmNode && confirmNode.remember ? confirmNode.remember.checked : false })
-        .then(function (res) {
-          submit.disabled = false;
-          if (res.ok) { values = null; finish(res.message || T.saved, true); }
-          else if (res.errors) showErrors(res.errors);
-          else finish(res.message || T.expired, false);
-        }, function () { submit.disabled = false; statusEl.className = 'status err'; statusEl.textContent = T.networkError; });
+      send();
     });
     root.appendChild(form);
     applyConditions();
+    // A share token travels in the URL FRAGMENT (never sent to any server). Copy it into its
+    // field and drop it from the address bar / history right away.
+    if (data.fragmentField && location.hash.length > 1 && fieldEls[data.fragmentField]) {
+      var ft = fieldEls[data.fragmentField].focusTarget;
+      try { ft.value = decodeURIComponent(location.hash.slice(1)); } catch (e) { ft.value = location.hash.slice(1); }
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function showReveal(r, terminal) {
+    var box = el('section', { class: 'reveal', 'aria-labelledby': 'rv-h' }, [el('h2', { id: 'rv-h', text: T.revealTitle })]);
+    if (r.note) box.appendChild(el('p', { class: 'desc', text: r.note }));
+    var vals = r.items.map(function (it) { return it.value; });
+    var mask = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+    r.items.forEach(function (it, i) {
+      var code = el('code', { class: 'secret-val', text: mask, 'aria-label': it.label });
+      var shown = false;
+      var tog = el('button', { type: 'button', 'aria-pressed': 'false', text: T.show });
+      tog.addEventListener('click', function () {
+        if (vals === null) return;
+        shown = !shown;
+        code.textContent = shown ? vals[i] : mask;
+        tog.textContent = shown ? T.hide : T.show;
+        tog.setAttribute('aria-pressed', shown ? 'true' : 'false');
+      });
+      var cp = el('button', { type: 'button', text: T.copy });
+      cp.addEventListener('click', function () {
+        if (vals === null) return;
+        navigator.clipboard.writeText(vals[i]).then(function () { cp.textContent = T.copiedShort; }, function () { cp.textContent = T.copyFailed; });
+      });
+      box.appendChild(el('div', { class: 'reveal-item' }, [el('div', { class: 'label', text: it.label }), code, el('div', { class: 'actions' }, [tog, cp])]));
+    });
+    var count = el('p', { class: 'meta', role: 'timer', 'aria-live': 'off' });
+    box.appendChild(count);
+    var left = r.hideAfter;
+    count.textContent = fmt(T.hidesIn, left);
+    r = null;
+    var timer = setInterval(function () {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(timer);
+        vals = null;
+        box.textContent = '';
+        box.appendChild(el('p', { class: 'status ok', role: 'status', text: T.revealHidden }));
+      } else count.textContent = fmt(T.hidesIn, left);
+    }, 1000);
+    if (terminal) { root.textContent = ''; root.appendChild(box); fileCache = {}; }
+    else root.insertBefore(box, root.firstChild);
   }
 
   function renderApproval() {
