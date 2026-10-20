@@ -220,6 +220,18 @@ export class Vault {
     return { value, meta, warnings };
   }
 
+  /**
+   * Reads a value for an encrypted backup (does not count as a use). Registers it in the
+   * sensitive registry like every other handled value.
+   */
+  async readForBackup(destination: string, name: string): Promise<string | undefined> {
+    const store = this.store(destination);
+    if (!store.readable) return undefined;
+    const v = await store.get(name);
+    if (v !== undefined) this.d.sensitive.add(name, v);
+    return v;
+  }
+
   /** For bootstrap tokens of remote stores: only local, readable destinations. */
   async resolveLocal(ref: string): Promise<string> {
     const meta = this.findMeta(ref);
