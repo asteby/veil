@@ -1,14 +1,14 @@
 /**
  * Encrypted .env format (git friendly, dotenvx/sops style). Example:
  *
- *   #/veilform-env v1
+ *   #/veil-env v1
  *   #/context .env.production
  *   #/recipient key:3f1c0a9e5b7d2c44 eyJ3Ijoi...
  *   #/recipient pass eyJrZGYiOnsi...
  *   #/mac 5mW0...
  *   # database
- *   export DB_URL="enc:v1:Qm9..."    ← one AES-256-GCM ciphertext per value
- *   API_KEY="enc:v1:x1Z..." # comment kept
+ *   export DB_URL="veil:1:Qm9..."    ← one AES-256-GCM ciphertext per value
+ *   API_KEY="veil:1:x1Z..." # comment kept
  *
  *  - Every line that is not a KEY=value keeps its text (comments, blank lines, order).
  *  - Each value is encrypted with the file DEK (random 32 bytes), a fresh 96-bit nonce
@@ -24,15 +24,22 @@
  *    touch the changed lines (+ the #/mac line).
  *
  * Comments and key NAMES stay in clear on purpose (reviewable diffs). See THREAT-MODEL.md.
+ *
+ * Former spelling (veilform): header `#/veilform-env v1` and values `enc:v1:…`. Same crypto
+ * (the AAD/HKDF labels below did not change), so both spellings are read. New files are written
+ * with the current spelling; editing an existing file keeps its spelling (minimal git diffs) and
+ * `rotate` (new data key, every value re-encrypted) upgrades it. docs/FORMAT-VEIL-SPEC.md §10.2.
  */
 import { canonicalJson, UserError } from '../util.js';
 import { parseEnv, quoteEnvValue } from '../fileformats.js';
 import { b64, checkKdfParams, deriveFromPassphrase, hkdf, hmac, hmacEqual, keyId, open, randomKey, seal, unb64, type KdfParams } from '../crypto/primitives.js';
 
-export const HEADER = '#/veilform-env v1';
-const ENC_PREFIX = 'enc:v1:';
+export const HEADER = '#/veil-env v1';
+export const LEGACY_HEADER = '#/veilform-env v1';
+const ENC_PREFIX = 'veil:1:';
+const LEGACY_ENC_PREFIX = 'enc:v1:';
 const KV_RE = /^(\s*)(export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)(\s*=\s*)(.*)$/;
-const ENC_RHS_RE = /^"?enc:v1:([A-Za-z0-9_-]+)"?$/;
+const ENC_RHS_RE = /^"?(?:veil:1:|enc:v1:)([A-Za-z0-9_-]+)"?$/;
 
 export type Recipient = { type: 'pass'; id: string; kdf: KdfParams; w: string } | { type: 'key'; id: string; w: string };
 
@@ -40,6 +47,8 @@ export type Line = { t: 'raw'; text: string } | { t: 'kv'; indent: string; exp: 
 
 export interface EnvDoc {
   encrypted: boolean;
+  /** written with the former spelling (#/veilform-env v1, enc:v1:) */
+  legacy?: boolean;
   context: string;
   recipients: Recipient[];
   mac?: string;
@@ -72,9 +81,11 @@ export function parseDoc(text: string, defaultContext = '.env'): EnvDoc {
     const line = src[i]!;
     if (line.startsWith('#/')) {
       const body = line.slice(2).replace(/\r$/, '');
-      if (line.replace(/\r$/, '') === HEADER) {
+      const h = line.replace(/\r$/, '');
+      if (h === HEADER || h === LEGACY_HEADER) {
         headerSeen = true;
         doc.encrypted = true;
+        if (h === LEGACY_HEADER) doc.legacy = true;
         continue;
       }
       if (headerSeen) {
@@ -145,7 +156,7 @@ function parseRecipient(v: string): Recipient {
 export function serialize(doc: EnvDoc): string {
   const out: string[] = [];
   if (doc.encrypted) {
-    out.push(HEADER, `#/context ${doc.context}`);
+    out.push(doc.legacy ? LEGACY_HEADER : HEADER, `#/context ${doc.context}`);
     for (const r of doc.recipients) out.push(`#/recipient ${r.id} ${b64(Buffer.from(JSON.stringify(r.type === 'pass' ? { kdf: r.kdf, w: r.w } : { w: r.w })))}`);
     out.push(`#/mac ${doc.mac ?? ''}`);
   }
@@ -162,7 +173,7 @@ export function keysOf(doc: EnvDoc): string[] {
   return kvLines(doc).map((l) => l.key);
 }
 
-/** Heuristic used by the pre-commit hook: a .env-like file with values not in enc:v1 form. */
+/** Heuristic used by the pre-commit hook: a .env-like file with values not in encrypted form. */
 export function plaintextKeys(doc: EnvDoc): string[] {
   return kvLines(doc)
     .filter((l) => !ENC_RHS_RE.test(l.rhs) && l.rhs !== '' && l.rhs !== '""' && l.rhs !== "''")
@@ -211,7 +222,7 @@ export interface Unlocked {
 
 /** Finds the DEK using any matching recipient. Wrong keys fail with `wrong_key` and no detail. */
 export async function unlock(doc: EnvDoc, m: UnlockMaterial): Promise<Unlocked> {
-  if (!doc.encrypted) throw new UserError('file is not a veilform encrypted .env', 'not_encrypted');
+  if (!doc.encrypted) throw new UserError('file is not a Veil encrypted .env', 'not_encrypted');
   if (m.dek) {
     if (doc.mac && hmacEqual(await macOf(m.dek, doc), doc.mac)) return { dek: m.dek, via: 'dek' };
     throw new UserError('cannot decrypt: wrong key or modified file', 'wrong_key');
@@ -277,6 +288,8 @@ export async function encryptDoc(plain: EnvDoc, opts: { context: string; dek?: B
   const dek = opts.dek ?? randomKey();
   const ctx = opts.context;
   const prevPlain = new Map<string, { rhs: string; enc: string }[]>();
+  // same data key and context: an edit, which keeps the file's spelling and unchanged ciphertexts
+  const legacy = !!(opts.prev && opts.prev.dek.equals(dek) && opts.prev.doc.context === ctx && opts.prev.doc.legacy);
   if (opts.prev && opts.prev.dek.equals(dek) && opts.prev.doc.context === ctx) {
     for (const l of kvLines(opts.prev.doc)) {
       const m = ENC_RHS_RE.exec(l.rhs);
@@ -292,10 +305,10 @@ export async function encryptDoc(plain: EnvDoc, opts: { context: string; dek?: B
   const lines: Line[] = plain.lines.map((l) => {
     if (l.t === 'raw') return l;
     const reuse = prevPlain.get(l.key)?.find((p) => p.rhs === l.rhs);
-    const enc = reuse ? reuse.enc : `"${ENC_PREFIX}${seal(dek, l.rhs, valueAad(ctx, l.key))}"`;
+    const enc = reuse ? reuse.enc : `"${legacy ? LEGACY_ENC_PREFIX : ENC_PREFIX}${seal(dek, l.rhs, valueAad(ctx, l.key))}"`;
     return { ...l, rhs: enc };
   });
-  const doc: EnvDoc = { encrypted: true, context: ctx, recipients, lines };
+  const doc: EnvDoc = { encrypted: true, ...(legacy ? { legacy } : {}), context: ctx, recipients, lines };
   doc.mac = await macOf(dek, doc);
   return { doc, dek };
 }
