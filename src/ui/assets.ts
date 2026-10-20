@@ -52,6 +52,12 @@ button { font: inherit; border-radius: 8px; padding: 9px 16px; border: 1px solid
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 button.danger { color: var(--danger); }
 button:disabled { opacity: .55; cursor: not-allowed; }
+.file-picker { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; position: relative; }
+.sr-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.file-button { display: inline-block; border-radius: 8px; padding: 9px 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-weight: 400; margin: 0; }
+.sr-file:focus-visible + .file-button { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sr-file:disabled + .file-button { opacity: .55; cursor: not-allowed; }
+.file-name { color: var(--muted); font-size: .9rem; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
 .check { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
 .check input { margin-top: 4px; width: 18px; height: 18px; }
@@ -116,6 +122,16 @@ export const CLIENT_JS = String.raw`
     }
     (children || []).forEach(function (c) { if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
     return e;
+  }
+  // Native file inputs show the BROWSER's language ("Choose File"); this keeps the input (focusable,
+  // labelled) but shows a button and the chosen name in the page language.
+  function filePicker(input) {
+    input.className = 'sr-file';
+    var name = el('span', { class: 'file-name', text: T.noFileChosen, 'aria-live': 'polite' });
+    input.addEventListener('change', function () { var f = input.files && input.files[0]; name.textContent = f ? f.name : T.noFileChosen; });
+    var box = el('span', { class: 'file-picker' }, [input, el('label', { for: input.id, class: 'file-button', text: T.chooseFile }), name]);
+    box.focusTarget = input;
+    return box;
   }
   function fmt(s, n) { return String(s).replace('{n}', String(n)); }
   function nid(p) { uid += 1; return 'f' + uid + '-' + p.replace(/[^A-Za-z0-9_-]/g, '_'); }
@@ -216,7 +232,7 @@ export const CLIENT_JS = String.raw`
           rd.onload = function () { var s = String(rd.result); fileCache[path] = { name: file.name, type: file.type, b64: s.slice(s.indexOf(',') + 1) }; };
           rd.readAsDataURL(file);
         });
-        control = fi; getter = function () { return fileCache[path] || null; };
+        control = filePicker(fi); getter = function () { return fileCache[path] || null; };
         break;
       }
       default: {
@@ -347,7 +363,7 @@ export const CLIENT_JS = String.raw`
       var paste = el('textarea', noFill({ id: pasteId, rows: '3', disabled: disabled ? true : null }));
       var pasteBtn = el('button', { type: 'button', text: T.pasteButton, disabled: disabled ? true : null, on: { click: function () { status.textContent = fmt(T.importedRows, importText(paste.value)); paste.value = ''; } } });
       wrap.appendChild(el('div', { class: 'paste' }, [
-        el('label', { for: csvId, text: T.importCsv }), csvIn,
+        el('label', { for: csvId, text: T.importCsv }), filePicker(csvIn),
         el('div', { class: 'field' }, [el('label', { for: pasteId, text: T.pasteLabel }), paste]),
         pasteBtn, status,
       ]));
