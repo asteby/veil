@@ -1,7 +1,7 @@
 /**
- * `veilform doctor`: diagnoses everything Veil needs WITHOUT running anything privileged and
+ * `veil doctor`: diagnoses everything Veil needs WITHOUT running anything privileged and
  * without asking for (or reading) any secret. It only:
- *  - reads files (/etc/os-release, /proc/<pid>/comm, permissions of the veilform directory),
+ *  - reads files (/etc/os-release, /proc/<pid>/comm, permissions of the Veil directory),
  *  - scans PATH,
  *  - runs read-only, unprivileged probes with a short timeout (`busctl --user get-property ...
  *    Locked` / `gdbus`, `security show-keychain-info`).
@@ -18,6 +18,8 @@ import { hasArgon2 } from './crypto/primitives.js';
 import type { LocalVaultStatus } from './localvault.js';
 import { detectPlatform, installCommand, which as defaultWhich, type PlatformInfo, type Tool } from './platform.js';
 import type { Runner } from './proc.js';
+import { localeLang } from './ui/i18n.js';
+import { APP, LEGACY_APP } from './naming.js';
 
 export type CheckStatus = 'ok' | 'warn' | 'error' | 'info';
 
@@ -113,7 +115,7 @@ function fixInstall(tool: Tool, p: PlatformInfo, what: Bi): Bi & { command?: str
 const LOCAL_VAULT_FIX: Bi & { command: string } = {
   en: "Or use Veil's own encrypted store, which needs nothing installed.",
   es: 'O usa el almacén cifrado propio de Veil, que no necesita instalar nada.',
-  command: 'veilform init',
+  command: 'veil init',
 };
 
 export async function runDoctor(d: DoctorDeps): Promise<DoctorReport> {
@@ -165,7 +167,7 @@ export async function runDoctor(d: DoctorDeps): Promise<DoctorReport> {
     cfg = parseConfig(configText === null ? {} : JSON.parse(configText));
     add({ id: 'config', area: 'config', status: 'ok', title: configText === null ? { en: 'No config file: built-in defaults', es: 'Sin archivo de configuración: valores por defecto' } : { en: 'Config is valid', es: 'La configuración es válida' }, detail: d.paths.configFile });
   } catch (e) {
-    add({ id: 'config', area: 'config', status: 'error', title: { en: 'Config is invalid', es: 'La configuración no es válida' }, detail: `${d.paths.configFile}: ${(e as Error).message.slice(0, 300)}`, impact: { en: 'The MCP server will not start.', es: 'El servidor MCP no arrancará.' }, fix: { en: 'Fix the file, or move it away and let init write a working one.', es: 'Corrige el archivo, o muévelo y deja que init escriba uno que funcione.', command: `mv ${d.paths.configFile} ${d.paths.configFile}.bad && veilform init` } });
+    add({ id: 'config', area: 'config', status: 'error', title: { en: 'Config is invalid', es: 'La configuración no es válida' }, detail: `${d.paths.configFile}: ${(e as Error).message.slice(0, 300)}`, impact: { en: 'The MCP server will not start.', es: 'El servidor MCP no arrancará.' }, fix: { en: 'Fix the file, or move it away and let init write a working one.', es: 'Corrige el archivo, o muévelo y deja que init escriba uno que funcione.', command: `mv ${d.paths.configFile} ${d.paths.configFile}.bad && veil init` } });
   }
 
   // ---------------------------------------------------------------- keychain
@@ -292,7 +294,7 @@ export async function runDoctor(d: DoctorDeps): Promise<DoctorReport> {
   let fallback: string | undefined;
   if (!dc) {
     effective = 'unavailable';
-    add({ id: 'destination.default', area: 'config', status: 'error', title: { en: `Default destination "${defId}" is not configured`, es: `El destino por defecto "${defId}" no está configurado` }, impact: { en: 'secret_request without a destination fails.', es: 'secret_request sin destino falla.' }, fix: { en: 'Write a working configuration.', es: 'Escribe una configuración que funcione.', command: 'veilform init' } });
+    add({ id: 'destination.default', area: 'config', status: 'error', title: { en: `Default destination "${defId}" is not configured`, es: `El destino por defecto "${defId}" no está configurado` }, impact: { en: 'secret_request without a destination fails.', es: 'secret_request sin destino falla.' }, fix: { en: 'Write a working configuration.', es: 'Escribe una configuración que funcione.', command: 'veil init' } });
   } else if (dc.type === 'keychain') {
     fallback = dc.fallback;
     effective = usable ? 'keychain' : dc.fallback === 'never' ? 'unavailable' : 'local-vault';
@@ -305,7 +307,7 @@ export async function runDoctor(d: DoctorDeps): Promise<DoctorReport> {
         : dc.fallback === 'never'
           ? { en: `Default destination "${defId}" (keychain, fallback: never) cannot store values`, es: `El destino por defecto "${defId}" (llavero, fallback: never) no puede guardar valores` }
           : { en: `Default destination "${defId}": keychain unavailable, Veil's encrypted store will be used (${dc.fallback === 'auto' ? 'automatically' : 'offered on the page'})`, es: `Destino por defecto "${defId}": llavero no disponible, se usará el almacén cifrado de Veil (${dc.fallback === 'auto' ? 'automáticamente' : 'ofrecido en la página'})` },
-      ...(usable ? {} : { impact: { en: 'secret_request still completes: the local page asks for (or creates) the master password.', es: 'secret_request igual se completa: la página local pide (o crea) la contraseña maestra.' }, fix: { en: 'Make the encrypted store the explicit default (no prompt about the keychain each time).', es: 'Haz del almacén cifrado el destino explícito por defecto (sin aviso del llavero cada vez).', command: 'veilform init' } }),
+      ...(usable ? {} : { impact: { en: 'secret_request still completes: the local page asks for (or creates) the master password.', es: 'secret_request igual se completa: la página local pide (o crea) la contraseña maestra.' }, fix: { en: 'Make the encrypted store the explicit default (no prompt about the keychain each time).', es: 'Haz del almacén cifrado el destino explícito por defecto (sin aviso del llavero cada vez).', command: 'veil init' } }),
     });
   } else if (dc.type === 'encrypted-file') {
     effective = dc.key.source === 'master' ? 'local-vault' : 'other';
@@ -340,8 +342,8 @@ export async function runDoctor(d: DoctorDeps): Promise<DoctorReport> {
     id: 'storage.session-agent',
     area: 'storage',
     status: 'info',
-    title: agentRunning ? { en: 'Session agent running (unlocks are shared and "veilform lock" forgets them)', es: 'Agente de sesión activo (los desbloqueos se comparten y "veilform lock" los olvida)' } : { en: 'Session agent not running (unlock lasts only inside each Veil process)', es: 'Agente de sesión no activo (el desbloqueo dura solo dentro de cada proceso de Veil)' },
-    ...(agentRunning ? {} : { fix: { en: 'Optional: start it in your session.', es: 'Opcional: inícialo en tu sesión.', command: 'veilform agent &' } }),
+    title: agentRunning ? { en: 'Session agent running (unlocks are shared and "veil lock" forgets them)', es: 'Agente de sesión activo (los desbloqueos se comparten y "veil lock" los olvida)' } : { en: 'Session agent not running (unlock lasts only inside each Veil process)', es: 'Agente de sesión no activo (el desbloqueo dura solo dentro de cada proceso de Veil)' },
+    ...(agentRunning ? {} : { fix: { en: 'Optional: start it in your session.', es: 'Opcional: inícialo en tu sesión.', command: 'veil agent &' } }),
   });
 
   // ---------------------------------------------------------------- permissions
@@ -419,6 +421,10 @@ async function probeSecretServiceLocked(runner: Runner, which: (c: string) => st
 }
 
 function checkPermissions(home: string, uid: number | undefined, os: NodeJS.Platform, add: (c: Check) => void): void {
+  if (path.basename(home) === LEGACY_APP && existsSync(home)) {
+    const next = path.join(path.dirname(home), APP);
+    add({ id: 'config.legacy_dir', area: 'config', status: 'info', title: { en: 'Using the former directory ~/.config/veilform (renamed to ~/.config/veil)', es: 'Se usa el directorio anterior ~/.config/veilform (ahora ~/.config/veil)' }, detail: home, fix: { en: 'Optional: move it (stop the MCP server first). Absolute paths inside config.json that point to the old directory must be updated too.', es: 'Opcional: muévelo (detén antes el servidor MCP). Las rutas absolutas dentro de config.json que apunten al directorio anterior también deben actualizarse.', command: `mv ${home} ${next}` } });
+  }
   if (!existsSync(home)) {
     add({ id: 'permissions.home', area: 'permissions', status: 'info', title: { en: 'Veil directory not created yet (created 0700 on first run)', es: 'El directorio de Veil aún no existe (se crea 0700 en la primera ejecución)' }, detail: home });
     return;
@@ -449,7 +455,7 @@ function checkPermissions(home: string, uid: number | undefined, os: NodeJS.Plat
     status: dirOk && !loose.length ? 'ok' : 'warn',
     title: dirOk && !loose.length ? { en: 'Veil directory is private (0700, files 0600)', es: 'El directorio de Veil es privado (0700, archivos 0600)' } : { en: 'Veil directory or files are readable by other users', es: 'El directorio o archivos de Veil son legibles por otros usuarios' },
     detail: dirOk ? (loose.length ? loose.join(', ') : home) : `${home} (${(st.mode & 0o777).toString(8)})`,
-    ...(dirOk && !loose.length ? {} : { impact: { en: 'Other local users could read metadata, audit logs or ciphertext.', es: 'Otros usuarios locales podrían leer metadatos, auditoría o cifrados.' }, fix: { en: 'Restrict them to your user (veilform init does it too).', es: 'Restríngelos a tu usuario (veilform init también lo hace).', command: `chmod 700 ${home}${loose.length ? ' && chmod 600 ' + loose.join(' ') : ''}` } }),
+    ...(dirOk && !loose.length ? {} : { impact: { en: 'Other local users could read metadata, audit logs or ciphertext.', es: 'Otros usuarios locales podrían leer metadatos, auditoría o cifrados.' }, fix: { en: 'Restrict them to your user (veil init does it too).', es: 'Restríngelos a tu usuario (veil init también lo hace).', command: `chmod 700 ${home}${loose.length ? ' && chmod 600 ' + loose.join(' ') : ''}` } }),
   });
 }
 
@@ -501,6 +507,5 @@ export function formatReport(r: DoctorReport, lang: 'en' | 'es'): string {
 
 export function cliLang(env: NodeJS.ProcessEnv = process.env, flag?: string): 'en' | 'es' {
   if (flag === 'es' || flag === 'en') return flag;
-  const l = env.VEILFORM_LANG ?? env.LC_ALL ?? env.LC_MESSAGES ?? env.LANG ?? '';
-  return /^es/i.test(l) ? 'es' : 'en';
+  return localeLang(env);
 }

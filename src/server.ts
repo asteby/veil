@@ -10,7 +10,7 @@ import { VERSION } from './version.js';
 export { VERSION };
 
 const SECURITY_NOTE =
-  'You will NEVER receive secret values: only names, statuses, counts, ids and fingerprints. Do not ask the person to paste secrets in chat; use these tools instead. Do not try to read the stores, the .env files written by this server, or the veilform directory with other tools.';
+  'You will NEVER receive secret values: only names, statuses, counts, ids and fingerprints. Do not ask the person to paste secrets in chat; use these tools instead. Do not try to read the stores, the .env files written by this server, or the Veil directory with other tools.';
 
 /** Flat input for secret_use (a top-level JSON object schema is friendlier to clients than a union). */
 const SecretUseInput = z.object({
@@ -33,7 +33,7 @@ const SecretUseInput = z.object({
 type Handler = (args: unknown) => Promise<SafeResult> | SafeResult;
 
 export function createServer(app: App): McpServer {
-  const server = new McpServer({ name: 'veilform', version: VERSION }, { instructions: `veilform: ask people for credentials and other sensitive values through a local page, store them, and use them without seeing them. ${SECURITY_NOTE}` });
+  const server = new McpServer({ name: 'veil', version: VERSION }, { instructions: `Veil: ask people for credentials and other sensitive values through a local page, store them, and use them without seeing them. ${SECURITY_NOTE}` });
 
   app.elicitor = {
     supportsUrl: () => Boolean((server.server.getClientCapabilities()?.elicitation as { url?: unknown } | undefined)?.url),
@@ -214,7 +214,7 @@ export function createServer(app: App): McpServer {
     {
       title: 'Diagnose what Veil needs on this machine',
       description:
-        'Read-only diagnosis: Node/crypto (argon2id), OS keychain backend (secret-tool + D-Bus + Secret Service lock state on Linux, security on macOS, Windows plan), the default destination and Veil\'s encrypted store, session agent, permissions of the veilform directory and optional tools (ssh, git, gh, psql, Chromium). Each problem has impact and the exact fix command for the detected distribution (apt/dnf/pacman/zypper/brew). Runs nothing privileged, needs no secret. Show the fix commands to the person; never run sudo yourself.',
+        'Read-only diagnosis: Node/crypto (argon2id), OS keychain backend (secret-tool + D-Bus + Secret Service lock state on Linux, security on macOS, Windows plan), the default destination and Veil\'s encrypted store, session agent, permissions of the Veil directory and optional tools (ssh, git, gh, psql, Chromium). Each problem has impact and the exact fix command for the detected distribution (apt/dnf/pacman/zypper/brew). Runs nothing privileged, needs no secret. Show the fix commands to the person; never run sudo yourself.',
       inputSchema: Inputs.doctor,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },

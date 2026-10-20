@@ -84,7 +84,7 @@ describe('keychain failures are classified (never a bare sink_failed)', () => {
     expect(cmd('ID="opensuse-tumbleweed"\nID_LIKE="opensuse suse"')).toBe('sudo zypper install -y libsecret-tools');
     expect(errorHelp('keychain_unavailable', { reason: 'no_dbus' })!.fix!.command).toBe('dbus-run-session -- $SHELL');
     expect(errorHelp('keychain_locked', { platform: detectPlatform({ platform: 'darwin' }) })!.fix!.command).toContain('security unlock-keychain');
-    expect(errorHelp('keychain_unsupported', { platform: detectPlatform({ platform: 'win32' }) })!.fix!.command).toBe('veilform init');
+    expect(errorHelp('keychain_unsupported', { platform: detectPlatform({ platform: 'win32' }) })!.fix!.command).toBe('veil init');
     for (const code of ['keychain_unavailable', 'keychain_locked', 'passphrase_required', 'master_password_not_set', 'destination_not_configured']) {
       const h = errorHelp(code)!;
       expect(h.en.length).toBeGreaterThan(10);
@@ -146,7 +146,7 @@ describe('secret_request with the OS keychain unavailable completes through the 
     // a new process (restart) finds the store locked: structured error with fix, never a value
     t2 = { ...t, app: new App({ cfg: t.app.cfg, paths: t.app.paths, keychainBackend: brokenKeychain(missingTool), openUrl: async () => false, testKdf: true, agentSocket: null }) } as TestApp;
     await expect(t2.app.vault.resolve('STRIPE_KEY')).rejects.toMatchObject({ code: 'passphrase_required' });
-    expect(t2.app.errorResult(await t2.app.vault.resolve('STRIPE_KEY').catch((e) => e))).toMatchObject({ error: 'passphrase_required', fix: { command: 'veilform unlock' } });
+    expect(t2.app.errorResult(await t2.app.vault.resolve('STRIPE_KEY').catch((e) => e))).toMatchObject({ error: 'passphrase_required', fix: { command: 'veil unlock' } });
 
     // local_unlock page: wrong password is limited, right one unlocks
     const u = await t2.app.localUnlock({});
@@ -262,7 +262,7 @@ describe('MCP surface: structured errors with fix', () => {
     const r = await client.callTool({ name: 'secret_request', arguments: { title: 'x', fields: [{ name: 'A', label: 'A' }], destination: 'nope' } });
     const body = JSON.parse((r.content as { text: string }[])[0]!.text);
     expect(r.isError).toBe(true);
-    expect(body).toMatchObject({ code: 'destination_not_configured', help: { en: expect.any(String), es: expect.any(String) }, fix: { command: 'veilform init' } });
+    expect(body).toMatchObject({ code: 'destination_not_configured', help: { en: expect.any(String), es: expect.any(String) }, fix: { command: 'veil init' } });
 
     const d = await client.callTool({ name: 'doctor', arguments: {} });
     const rep = JSON.parse((d.content as { text: string }[])[0]!.text);

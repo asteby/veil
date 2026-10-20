@@ -1,6 +1,6 @@
 /**
  * Where key material comes from, OUTSIDE the encrypted artefacts:
- *  - key files (0600, outside the repo): `--key-file`, VEILFORM_KEY_FILE
+ *  - key files (0600, outside the repo): `--key-file`, VEIL_KEY_FILE
  *  - the OS keychain (via the existing KeychainBackend)
  *  - systemd credentials ($CREDENTIALS_DIRECTORY/<name>, LoadCredential=)
  *  - the optional session agent (KEK/DEK cache in memory behind a 0600 unix socket)
@@ -10,6 +10,7 @@ import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, st
 import net from 'node:net';
 import path from 'node:path';
 import type { KeychainBackend } from '../stores/keychain.js';
+import { APP, envVar } from '../naming.js';
 import { expandHome, UserError } from '../util.js';
 import { b64, KEY_LEN, keyId, randomKey, unb64 } from './primitives.js';
 
@@ -26,7 +27,7 @@ function parseKeyText(raw: Buffer, where: string): Buffer {
   if (/^[0-9a-fA-F]{64}$/.test(s)) return Buffer.from(s, 'hex');
   if (/^vfk1:[A-Za-z0-9_-]{43}$/.test(s)) return unb64(s.slice(5), 'key');
   if (raw.length === KEY_LEN) return Buffer.from(raw);
-  throw new UserError(`${where} is not a veilform key (expected 64 hex chars or vfk1:<base64url>)`, 'bad_key_file');
+  throw new UserError(`${where} is not a Veil key (expected 64 hex chars or vfk1:<base64url>)`, 'bad_key_file');
 }
 
 /** Reads a key file; refuses files readable by group/others (like ssh does for private keys). */
@@ -70,8 +71,11 @@ export async function keychainKey(kc: KeychainBackend, service: string, account:
   return { kind: 'keychain', where: `${service}/${account}`, id: keyId(key), key };
 }
 
+/** systemd credential names tried by default: the current one, then the former one (units already deployed). */
+export const SYSTEMD_CREDENTIALS = ['veil-key', 'veilform-key'] as const;
+
 /** systemd `LoadCredential=<name>:<path>` → $CREDENTIALS_DIRECTORY/<name>. */
-export function systemdCredential(name = 'veilform-key', env: NodeJS.ProcessEnv = process.env): NamedKey | undefined {
+export function systemdCredential(name: string = SYSTEMD_CREDENTIALS[0], env: NodeJS.ProcessEnv = process.env): NamedKey | undefined {
   const dir = env.CREDENTIALS_DIRECTORY;
   if (!dir) return undefined;
   const file = path.join(dir, name);
@@ -86,19 +90,24 @@ export function ambientKeys(opts: { keyFiles?: string[]; env?: NodeJS.ProcessEnv
   const env = opts.env ?? process.env;
   const out: NamedKey[] = [];
   const files = [...(opts.keyFiles ?? [])];
-  if (env.VEILFORM_KEY_FILE) files.push(...env.VEILFORM_KEY_FILE.split(path.delimiter).filter(Boolean));
+  const keyFiles = envVar('KEY_FILE', env);
+  if (keyFiles) files.push(...keyFiles.split(path.delimiter).filter(Boolean));
   for (const f of files) out.push(readKeyFile(f));
-  const cred = systemdCredential(env.VEILFORM_CREDENTIAL ?? 'veilform-key', env);
-  if (cred) out.push(cred);
+  const custom = envVar('CREDENTIAL', env);
+  for (const name of custom ? [custom] : SYSTEMD_CREDENTIALS) {
+    const cred = systemdCredential(name, env);
+    if (cred) out.push(cred);
+  }
   return out;
 }
 
 // ------------------------------------------------------------------ session agent
 
-/** Default socket path: $XDG_RUNTIME_DIR/veilform/agent.sock (fallback: <home>/run/agent.sock). */
+/** Default socket path: $XDG_RUNTIME_DIR/veil/agent.sock (fallback: <home>/run/agent.sock). */
 export function agentSocketPath(home: string, env: NodeJS.ProcessEnv = process.env): string {
-  if (env.VEILFORM_AGENT_SOCK) return env.VEILFORM_AGENT_SOCK;
-  return env.XDG_RUNTIME_DIR ? path.join(env.XDG_RUNTIME_DIR, 'veilform', 'agent.sock') : path.join(home, 'run', 'agent.sock');
+  const sock = envVar('AGENT_SOCK', env);
+  if (sock) return sock;
+  return env.XDG_RUNTIME_DIR ? path.join(env.XDG_RUNTIME_DIR, APP, 'agent.sock') : path.join(home, 'run', 'agent.sock');
 }
 
 /**
@@ -120,7 +129,7 @@ export class SessionAgent {
     mkdirSync(path.dirname(this.socket), { recursive: true, mode: 0o700 });
     chmodSync(path.dirname(this.socket), 0o700);
     if (existsSync(this.socket)) {
-      if (await agentRequest(this.socket, { op: 'ping' }).catch(() => undefined)) throw new UserError('a veilform agent is already running', 'agent_running');
+      if (await agentRequest(this.socket, { op: 'ping' }).catch(() => undefined)) throw new UserError('a veil agent is already running', 'agent_running');
       unlinkSync(this.socket);
     }
     this.server = net.createServer((c) => {
@@ -197,7 +206,7 @@ export class SessionAgent {
 
 export function agentRequest(socket: string, req: Record<string, unknown>, timeoutMs = 2000): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    if (!existsSync(socket)) return reject(new UserError('no veilform agent running', 'no_agent'));
+    if (!existsSync(socket)) return reject(new UserError('no veil agent running', 'no_agent'));
     const c = net.createConnection(socket);
     let buf = '';
     const t = setTimeout(() => {
@@ -217,7 +226,7 @@ export function agentRequest(socket: string, req: Record<string, unknown>, timeo
     });
     c.on('error', () => {
       clearTimeout(t);
-      reject(new UserError('no veilform agent running', 'no_agent'));
+      reject(new UserError('no veil agent running', 'no_agent'));
     });
   });
 }

@@ -1,5 +1,5 @@
 /**
- * Platform facts used by `veilform doctor`, `veilform init` and the actionable error
+ * Platform facts used by `veil doctor`, `veil init` and the actionable error
  * catalog: OS, Linux distribution, package manager and the EXACT install command for a
  * missing tool. Detection only reads files and scans PATH; it never runs anything
  * privileged (and never runs a package manager).

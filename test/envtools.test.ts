@@ -199,7 +199,7 @@ describe('CLI (in process) and deployment helpers', () => {
     out = [];
   });
 
-  it('veilform run with a systemd credential; env unlock --status lists methods (no values)', async () => {
+  it('veil run with a systemd credential; env unlock --status lists methods (no values)', async () => {
     const { t, proj } = setup();
     const f = path.join(proj, '.env.production');
     const V = 'systemd-cred-value-42';
@@ -207,14 +207,14 @@ describe('CLI (in process) and deployment helpers', () => {
     const key = createKeyFile(path.join(tmpDir(), 'server.key'));
     await t.app.envFiles.encrypt(f, { keyFiles: [key.where] });
     const cred = tmpDir('vf-cred-');
-    writeFileSync(path.join(cred, 'veilform-key'), readFileSync(key.where));
+    writeFileSync(path.join(cred, 'veil-key'), readFileSync(key.where));
     const prev = process.env.CREDENTIALS_DIRECTORY;
     process.env.CREDENTIALS_DIRECTORY = cred;
     try {
       const mk = () => makeApp().app;
       expect(await runVaultCli(['env', 'unlock', f, '--status'], mk)).toBe(0);
       const status = JSON.parse(out.join(''));
-      expect(status.methods).toContain('systemd-credential veilform-key');
+      expect(status.methods).toContain('systemd-credential veil-key');
       out = [];
       const code = await runVaultCli(['run', '--env', f, '--', process.execPath, '-e', 'console.log("len=" + process.env.APP_SECRET.length, process.env.APP_SECRET)'], mk);
       expect(code).toBe(0);
@@ -232,10 +232,10 @@ describe('CLI (in process) and deployment helpers', () => {
 
   it.skipIf(!existsSync('/usr/bin/systemd-analyze'))('example systemd unit and drop-in are valid (systemd-analyze verify)', () => {
     const dir = tmpDir('vf-unit-');
-    const unit = readFileSync(path.resolve('examples/systemd/myapp.service'), 'utf8').replaceAll('/usr/bin/veilform', process.execPath).replaceAll('/usr/bin/node', process.execPath);
+    const unit = readFileSync(path.resolve('examples/systemd/myapp.service'), 'utf8').replaceAll('/usr/bin/veil', process.execPath).replaceAll('/usr/bin/node', process.execPath);
     writeFileSync(path.join(dir, 'myapp.service'), unit);
     mkdirSync(path.join(dir, 'myapp.service.d'));
-    writeFileSync(path.join(dir, 'myapp.service.d', 'veilform.conf'), readFileSync(path.resolve('examples/systemd/myapp.service.d/veilform.conf'), 'utf8').replaceAll('/usr/bin/veilform', process.execPath).replaceAll('/usr/bin/node', process.execPath));
+    writeFileSync(path.join(dir, 'myapp.service.d', 'veil.conf'), readFileSync(path.resolve('examples/systemd/myapp.service.d/veil.conf'), 'utf8').replaceAll('/usr/bin/veil', process.execPath).replaceAll('/usr/bin/node', process.execPath));
     const r = spawnSync('systemd-analyze', ['verify', path.join(dir, 'myapp.service')], { encoding: 'utf8' });
     expect(r.stderr).toBe('');
     expect(r.status).toBe(0);

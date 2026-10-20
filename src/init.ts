@@ -1,6 +1,6 @@
 /**
- * `veilform init`: assisted first use. Runs the doctor, shows a plan and applies ONLY user-level
- * changes (the veilform directory, its permissions and config.json). It never runs sudo and
+ * `veil init`: assisted first use. Runs the doctor, shows a plan and applies ONLY user-level
+ * changes (the Veil directory, its permissions and config.json). It never runs sudo and
  * never asks for a secret: the master password of Veil's encrypted store is defined on the
  * local page, on first use (or right away with `--master`).
  */
@@ -8,6 +8,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSy
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { parseConfig, type Paths } from './config.js';
+import { DEFAULT_KEYCHAIN_SERVICE } from './naming.js';
 import type { Bi, DoctorReport } from './doctor.js';
 import { LocalFileIO } from './fileio.js';
 
@@ -55,7 +56,7 @@ export function planInit(paths: Paths, report: DoctorReport, opts: { configText?
   let config: Record<string, unknown> | undefined;
   if (text === null) {
     config = usable
-      ? { defaultDestination: 'local', destinations: { local: { type: 'keychain', service: 'veilform', fallback: 'auto' } }, localVault: { unlockMinutes: 15 } }
+      ? { defaultDestination: 'local', destinations: { local: { type: 'keychain', service: DEFAULT_KEYCHAIN_SERVICE, fallback: 'auto' } }, localVault: { unlockMinutes: 15 } }
       : { defaultDestination: 'local', destinations: { local: { type: 'encrypted-file', path: vaultPath, key: { source: 'master' } } }, localVault: { path: vaultPath, unlockMinutes: 15 } };
     steps.push({
       id: 'config',
@@ -80,7 +81,7 @@ export function planInit(paths: Paths, report: DoctorReport, opts: { configText?
       const def = cfg.destinations[defId];
       let changed = false;
       if (!def) {
-        dests[defId] = usable ? { type: 'keychain', service: 'veilform', fallback: 'auto' } : { type: 'encrypted-file', path: vaultPath, key: { source: 'master' } };
+        dests[defId] = usable ? { type: 'keychain', service: DEFAULT_KEYCHAIN_SERVICE, fallback: 'auto' } : { type: 'encrypted-file', path: vaultPath, key: { source: 'master' } };
         changed = true;
         notes.push({ en: `Adds the missing default destination "${defId}".`, es: `Agrega el destino por defecto "${defId}" que faltaba.` });
       } else if (def.type === 'keychain' && def.fallback !== 'auto' && !usable) {
@@ -105,8 +106,8 @@ export function planInit(paths: Paths, report: DoctorReport, opts: { configText?
     if (/^sudo |^winget |^brew /.test(c.fix.command) && !manual.some((m) => m.command === c.fix!.command)) manual.push({ title: c.title, command: c.fix.command });
   }
   notes.push({
-    en: `The master password of the encrypted store is NOT asked here: the local page asks for it the first time a value goes there (or now with "veilform init --master"). If you forget it, the data cannot be recovered: keep a copy and back up ${vaultPath}.`,
-    es: `La contraseña maestra del almacén cifrado NO se pide aquí: la página local la pide la primera vez que un valor va ahí (o ahora con "veilform init --master"). Si la olvidas, los datos no se pueden recuperar: guarda una copia y respalda ${vaultPath}.`,
+    en: `The master password of the encrypted store is NOT asked here: the local page asks for it the first time a value goes there (or now with "veil init --master"). If you forget it, the data cannot be recovered: keep a copy and back up ${vaultPath}.`,
+    es: `La contraseña maestra del almacén cifrado NO se pide aquí: la página local la pide la primera vez que un valor va ahí (o ahora con "veil init --master"). Si la olvidas, los datos no se pueden recuperar: guarda una copia y respalda ${vaultPath}.`,
   });
   return { steps, manual, config, notes };
 }

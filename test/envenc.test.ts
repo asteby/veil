@@ -41,15 +41,16 @@ describe('encrypted .env format', () => {
     const key = randomBytes(32);
     const { doc, dek } = await encryptDoc(plain, { context: '.env.production', recipients: [{ type: 'key', key }] });
     const text = serialize(doc);
-    expect(text).toContain('#/veilform-env v1');
+    expect(text).toContain('#/veil-env v1');
+    expect(text).not.toContain('enc:v1:');
     expect(text).toContain('# app config');
     expect(text).toContain('not a kv line');
     expect(text).not.toContain('postgres://');
     expect(text).not.toContain('line2');
     expect(text).not.toContain('literal');
     expect(text).not.toContain('spaced');
-    expect(text).toMatch(/^export DB_URL="enc:v1:/m);
-    expect(text).toMatch(/^EQ="enc:v1:[A-Za-z0-9_-]+" # trailing comment$/m);
+    expect(text).toMatch(/^export DB_URL="veil:1:/m);
+    expect(text).toMatch(/^EQ="veil:1:[A-Za-z0-9_-]+" # trailing comment$/m);
     const back = parseDoc(text, 'x');
     expect(back.context).toBe('.env.production');
     const u = await unlock(back, { keys: [key] });
@@ -69,7 +70,7 @@ describe('encrypted .env format', () => {
     const variants: Record<string, string> = {};
     // flip one character inside A's ciphertext
     const a = lines[idx('A')]!;
-    const pos = a.indexOf('enc:v1:') + 12;
+    const pos = a.indexOf('veil:1:') + 12;
     variants.bitflip = lines.map((l, i) => (i === idx('A') ? a.slice(0, pos) + (a[pos] === 'A' ? 'B' : 'A') + a.slice(pos + 1) : l)).join('\n');
     // move B's ciphertext to A
     variants.moved = lines.map((l, i) => (i === idx('A') ? 'A=' + lines[idx('B')]!.slice(2) : l)).join('\n');
@@ -106,11 +107,14 @@ describe('encrypted .env format', () => {
       const { entries } = await fresh.decrypt(f, o);
       expect(entries.find((x) => x.key === 'TOKEN')!.value).toBe('s3cr3t-value-1');
     }
-    // systemd credential directory
-    const cred = tmpDir('vf-cred-');
-    writeFileSync(path.join(cred, 'veilform-key'), readFileSync(kServer.where));
-    expect((await env({ env: { CREDENTIALS_DIRECTORY: cred } }).decrypt(f)).entries[0]!.value).toBe('s3cr3t-value-1');
-    // VEILFORM_KEY_FILE
+    // systemd credential directory: veil-key, and the former name veilform-key (units deployed before the rename)
+    for (const credName of ['veil-key', 'veilform-key']) {
+      const cred = tmpDir('vf-cred-');
+      writeFileSync(path.join(cred, credName), readFileSync(kServer.where));
+      expect((await env({ env: { CREDENTIALS_DIRECTORY: cred } }).decrypt(f)).entries[0]!.value, credName).toBe('s3cr3t-value-1');
+    }
+    // VEIL_KEY_FILE, and the deprecated alias VEILFORM_KEY_FILE
+    expect((await env({ env: { VEIL_KEY_FILE: kMine.where } }).decrypt(f)).entries[0]!.value).toBe('s3cr3t-value-1');
     expect((await env({ env: { VEILFORM_KEY_FILE: kMine.where } }).decrypt(f)).entries[0]!.value).toBe('s3cr3t-value-1');
     await env().addRecipients(f, { keyFiles: [kMine.where] }, {}, [`key:${kServer.id}`]);
     await expect(env().decrypt(f, { keyFiles: [kServer.where] })).rejects.toMatchObject({ code: 'wrong_key' });

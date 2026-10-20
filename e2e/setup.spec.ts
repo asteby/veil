@@ -121,7 +121,7 @@ test('fallback "never": an actionable error page (help + exact command), never a
   await page.getByRole('button', { name: 'Guardar de forma segura' }).click();
   await expect(page.getByRole('status')).toContainText('secret-tool (libsecret) no está instalado');
   await expect(page.getByRole('heading', { name: 'Cómo arreglarlo' })).toBeVisible();
-  await expect(page.locator('.cmd code').last()).toHaveText('veilform init');
+  await expect(page.locator('.cmd code').last()).toHaveText('veil init');
   await expect(page.locator('body')).not.toContainText('sink_failed');
   await shot(page, '15-es-error-accionable');
 });

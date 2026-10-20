@@ -84,7 +84,7 @@ export async function runSetupCli(argv: string[], makeApp: () => App): Promise<n
       out('');
       out(lang === 'es' ? 'Registra Veil en Claude Code:' : 'Register Veil in Claude Code:');
       out(`  $ ${registerCommand(cli)}`);
-      out(lang === 'es' ? '  (publicado: claude mcp add -s user veil -- npx -y veilform)' : '  (published: claude mcp add -s user veil -- npx -y veilform)');
+      out(lang === 'es' ? '  (publicado: claude mcp add -s user veil -- npx -y @asteby/veil)' : '  (published: claude mcp add -s user veil -- npx -y @asteby/veil)');
       if (has('master')) {
         await app?.shutdown();
         app = makeApp();
@@ -184,8 +184,8 @@ async function unlockCmd(app: App, v: LocalVault, o: { ui: boolean; minutes: num
   if (r.cached !== 'agent')
     err(
       o.lang === 'es'
-        ? 'Aviso: no hay agente de sesión, así que este desbloqueo solo vale para este comando. Inicia "veilform agent" para compartirlo con el servidor MCP, o usa la herramienta MCP local_unlock.'
-        : 'Note: no session agent is running, so this unlock only lasts for this command. Start "veilform agent" to share it with the MCP server, or use the MCP tool local_unlock.',
+        ? 'Aviso: no hay agente de sesión, así que este desbloqueo solo vale para este comando. Inicia "veil agent" para compartirlo con el servidor MCP, o usa la herramienta MCP local_unlock.'
+        : 'Note: no session agent is running, so this unlock only lasts for this command. Start "veil agent" to share it with the MCP server, or use the MCP tool local_unlock.',
     );
   return 0;
 }

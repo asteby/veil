@@ -16,7 +16,7 @@ import { makeApp, memKeychain, type TestApp } from '../../test/helpers.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const OUT = path.join(ROOT, 'docs/assets');
-const WORK = mkdtempSync(path.join(tmpdir(), 'veilform-readme-'));
+const WORK = mkdtempSync(path.join(tmpdir(), 'veil-readme-'));
 const LANGS = ['en', 'es'] as const;
 const THEMES = ['light', 'dark'] as const;
 type Lang = (typeof LANGS)[number];

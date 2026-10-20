@@ -8,6 +8,7 @@ import { newKdfParams, type KdfParams } from '../crypto/primitives.js';
 import { LocalFileIO } from '../fileio.js';
 import { Redactor } from '../redact.js';
 import type { KeychainBackend } from '../stores/keychain.js';
+import { isOwnEnvVar } from '../naming.js';
 import { expandHome, globMatch, UserError } from '../util.js';
 import { applyChanges, decryptDoc, encryptDoc, keysOf, kvLines, parseDoc, rhsValue, plaintextKeys, serialize, setRecipients, unlock, type EnvDoc, type PlainEntry, type RecipientSpec } from './format.js';
 
@@ -141,7 +142,7 @@ export class EnvFiles {
     }
   }
 
-  /** Puts a DEK into the session agent for `minutes` (veilform env unlock). */
+  /** Puts a DEK into the session agent for `minutes` (veil env unlock). */
   async remember(doc: EnvDoc, dek: Buffer, minutes: number): Promise<boolean> {
     this.cacheDek(doc, dek, minutes);
     return this.d.agentSocket ? agentPut(this.d.agentSocket, docCacheId(doc), dek, minutes * 60) : false;
@@ -275,7 +276,7 @@ export class EnvFiles {
     if (unlocked) methods.push('session (already unlocked)');
     for (const k of await this.keys(o)) if (avail.has(`key:${k.id}`) && doc.recipients.some((r) => r.id === `key:${k.id}`)) methods.push(`${k.kind} ${k.where}`);
     if (doc.recipients.some((r) => r.type === 'pass')) methods.push('passphrase (local page or TTY)');
-    if (doc.encrypted) methods.push('share token (veilform env unlock --token)');
+    if (doc.encrypted) methods.push('share token (veil env unlock --token)');
     return { file, encrypted: doc.encrypted, context: doc.context, keys: keysOf(doc), recipients, methods, unlocked, plaintext_keys: doc.encrypted ? [] : plaintextKeys(doc) };
   }
 
@@ -288,7 +289,7 @@ export class EnvFiles {
     if (!argv.length) throw new UserError('missing command after --', 'invalid_args');
     const { entries } = await this.decrypt(file, o);
     const env: NodeJS.ProcessEnv = { ...process.env };
-    for (const k of Object.keys(env)) if (k.startsWith('VEILFORM') && k !== 'VEILFORM_AGENT') delete env[k];
+    for (const k of Object.keys(env)) if (isOwnEnvVar(k) && !/^VEIL(FORM)?_AGENT$/.test(k)) delete env[k];
     const used = entries.filter((e) => !o.only || o.only.includes(e.key));
     for (const e of used) env[e.key] = e.value;
     const red = new Redactor(used.filter((e) => e.value.length >= 4).map((e) => ({ label: e.key, value: e.value })));
@@ -378,7 +379,7 @@ export function gitignoreWarning(file: string): string | undefined {
     if (existsSync(path.join(dir, '.git'))) {
       const gi = existsSync(path.join(dir, '.gitignore')) ? readFileSync(path.join(dir, '.gitignore'), 'utf8') : '';
       const ignored = gi.split('\n').some((l) => /^\/?\.env(\*|\.\*)?$/.test(l.trim()) || l.trim() === path.basename(file));
-      return ignored ? undefined : `add plaintext .env files to ${path.join(dir, '.gitignore')} (e.g. ".env.local"), and consider "veilform env hook install"`;
+      return ignored ? undefined : `add plaintext .env files to ${path.join(dir, '.gitignore')} (e.g. ".env.local"), and consider "veil env hook install"`;
     }
     const up = path.dirname(dir);
     if (up === dir) break;

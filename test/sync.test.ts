@@ -327,7 +327,7 @@ describe('sync targets (only opaque blobs reach them) and conflicts', () => {
     execFileSync('git', ['init', '-q', '--bare', bare]);
     await roundTrip({ type: 'git', url: bare, branch: 'main', path: 'vf' });
     const log = execFileSync('git', ['--git-dir', bare, 'log', '--format=%s', 'main']).toString();
-    expect(log).toContain('veilform sync seq 1');
+    expect(log).toContain('veil sync seq 1');
     const tree = execFileSync('git', ['--git-dir', bare, 'ls-tree', '-r', '--name-only', 'main']).toString();
     expect(tree).toContain('vf/manifest.json');
     const all = execFileSync('git', ['--git-dir', bare, 'log', '-p', 'main']).toString();

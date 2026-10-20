@@ -45,7 +45,7 @@ export interface ErrorHelp {
 const USE_LOCAL_VAULT: Fix = {
   en: "Or keep going without installing anything: use Veil's own encrypted store (one file, AES-256-GCM, master password typed on the local page).",
   es: 'O sigue sin instalar nada: usa el almacén cifrado propio de Veil (un archivo, AES-256-GCM, contraseña maestra escrita en la página local).',
-  command: 'veilform init',
+  command: 'veil init',
 };
 
 export function errorHelp(code: string, ctx: { reason?: KeychainReason; platform?: PlatformInfo } = {}): ErrorHelp | undefined {
@@ -97,30 +97,30 @@ export function errorHelp(code: string, ctx: { reason?: KeychainReason; platform
         fix: USE_LOCAL_VAULT,
       };
     case 'keychain_failed':
-      return { code, en: 'The OS keychain refused the operation.', es: 'El llavero del sistema rechazó la operación.', fix: { en: 'Run the diagnosis to see why.', es: 'Ejecuta el diagnóstico para ver por qué.', command: 'veilform doctor' }, alternative: USE_LOCAL_VAULT };
+      return { code, en: 'The OS keychain refused the operation.', es: 'El llavero del sistema rechazó la operación.', fix: { en: 'Run the diagnosis to see why.', es: 'Ejecuta el diagnóstico para ver por qué.', command: 'veil doctor' }, alternative: USE_LOCAL_VAULT };
     case 'passphrase_required':
       return {
         code,
         en: "Veil's encrypted store is locked.",
         es: 'El almacén cifrado de Veil está bloqueado.',
-        fix: { en: 'Unlock it with the master password on the local page (MCP tool local_unlock) or in your terminal. It stays unlocked in memory for the configured minutes.', es: 'Desbloquéalo con la contraseña maestra en la página local (herramienta MCP local_unlock) o en tu terminal. Queda desbloqueado en memoria los minutos configurados.', command: 'veilform unlock' },
+        fix: { en: 'Unlock it with the master password on the local page (MCP tool local_unlock) or in your terminal. It stays unlocked in memory for the configured minutes.', es: 'Desbloquéalo con la contraseña maestra en la página local (herramienta MCP local_unlock) o en tu terminal. Queda desbloqueado en memoria los minutos configurados.', command: 'veil unlock' },
       };
     case 'master_password_not_set':
       return {
         code,
         en: "Veil's encrypted store has no master password yet.",
         es: 'El almacén cifrado de Veil aún no tiene contraseña maestra.',
-        fix: { en: 'Define it on the local page (never in the chat). If you forget it the data cannot be recovered: keep a backup.', es: 'Defínela en la página local (nunca en el chat). Si la olvidas los datos no se pueden recuperar: guarda un respaldo.', command: 'veilform unlock' },
+        fix: { en: 'Define it on the local page (never in the chat). If you forget it the data cannot be recovered: keep a backup.', es: 'Defínela en la página local (nunca en el chat). Si la olvidas los datos no se pueden recuperar: guarda un respaldo.', command: 'veil unlock' },
       };
     case 'destination_not_configured':
       return {
         code,
         en: 'The destination is not configured.',
         es: 'El destino no está configurado.',
-        fix: { en: 'Create a working configuration (keychain when it works, encrypted store otherwise) or add the destination to config.json.', es: 'Crea una configuración que funcione (llavero si funciona, almacén cifrado si no) o agrega el destino a config.json.', command: 'veilform init' },
+        fix: { en: 'Create a working configuration (keychain when it works, encrypted store otherwise) or add the destination to config.json.', es: 'Crea una configuración que funcione (llavero si funciona, almacén cifrado si no) o agrega el destino a config.json.', command: 'veil init' },
       };
     case 'wrong_key':
-      return { code, en: 'Wrong master password or key (attempts are limited).', es: 'Contraseña maestra o llave incorrecta (los intentos son limitados).', fix: { en: 'Try again on the local page.', es: 'Inténtalo de nuevo en la página local.', command: 'veilform unlock' } };
+      return { code, en: 'Wrong master password or key (attempts are limited).', es: 'Contraseña maestra o llave incorrecta (los intentos son limitados).', fix: { en: 'Try again on the local page.', es: 'Inténtalo de nuevo en la página local.', command: 'veil unlock' } };
     case 'too_many_attempts':
       return { code, en: 'Too many failed attempts; locked for a while.', es: 'Demasiados intentos fallidos; bloqueado por un tiempo.', fix: { en: 'Wait and try again.', es: 'Espera e inténtalo de nuevo.' } };
     case 'weak_passphrase':

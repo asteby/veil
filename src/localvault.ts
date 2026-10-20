@@ -7,9 +7,9 @@
  *  - The master password is defined on the LOCAL page (127.0.0.1) the first time it is needed,
  *    never in the chat, MCP arguments or argv. It is never written anywhere.
  *  - Unlocking keeps only the DERIVED key in memory: in the session agent when one is running
- *    (`veilform agent`; `veilform lock` forgets it everywhere) or in this process for
+ *    (`veil agent`; `veil lock` forgets it everywhere) or in this process for
  *    `unlockMinutes`.
- *  - Optionally the derived key can be saved in the OS keychain later (`veilform unlock
+ *  - Optionally the derived key can be saved in the OS keychain later (`veil unlock
  *    --save-keychain`) so the store opens without typing the password.
  *  - Forgotten master password = unrecoverable data (by design). See THREAT-MODEL.md §9.
  */
@@ -115,7 +115,7 @@ export class LocalVault {
     const ttl = Math.max(1, minutes) * 60;
     if (this.o.agentSocket && (await agentPut(this.o.agentSocket, this.idFor(s), key, ttl))) {
       // short in-process copy so the operation that just unlocked does not depend on the socket;
-      // `veilform lock` (agent) takes effect for every process within seconds
+      // `veil lock` (agent) takes effect for every process within seconds
       this.cache = { key: Buffer.from(key), salt: this.saltOf(s), expires: this.now() + 10_000 };
       return 'agent';
     }

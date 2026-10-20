@@ -29,7 +29,7 @@ export const TargetSchema = z.discriminatedUnion('kind', [
     host: z.string().optional(),
     unit: z.string().regex(/^[A-Za-z0-9@_.-]+\.service$/),
     key: z.string().optional(),
-    env_file: z.string().optional().describe('default /etc/veilform/<unit>.env'),
+    env_file: z.string().optional().describe('default /etc/veilform/<unit>.env (former name kept: files already deployed)'),
     restart: z.boolean().optional(),
   }),
   z.object({ kind: z.literal('github'), repo: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/), key: z.string().optional(), environment: z.string().optional() }),
@@ -203,7 +203,7 @@ export class TargetWriter {
   private async systemdDropIn(t: Extract<Target, { kind: 'systemd' }>): Promise<void> {
     const envFile = targetPath(t)!;
     const dropInDir = `/etc/systemd/system/${t.unit}.d`;
-    const content = `# Managed by veilform\n[Service]\nEnvironmentFile=${envFile}\n`;
+    const content = `# Managed by Veil\n[Service]\nEnvironmentFile=${envFile}\n`;
     const io = this.io(t.host);
     await io.writeAtomic(`${dropInDir}/50-veilform.conf`, content, { mode: '0644' });
     const cmds = ['systemctl daemon-reload', ...(t.restart ? [`systemctl restart ${shQuote(t.unit)}`] : [])].join(' && ');

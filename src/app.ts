@@ -17,7 +17,8 @@ import { secretRefs, secretRefsDeep } from './templates.js';
 import { UiServer, type FallbackOffer, type PageFix, type PageSpec, type SubmitPayload, type SubmitResult } from './ui/server.js';
 import { fixOf, isKeychainFailure } from './errors.js';
 import { MIN_MASTER_LENGTH, type LocalVault } from './localvault.js';
-import { STRINGS, type Lang } from './ui/i18n.js';
+import { localeLang, STRINGS, type Lang } from './ui/i18n.js';
+import { envVar } from './naming.js';
 import { fingerprint, log, newId, UserError } from './util.js';
 import { Vault, type MetaInput } from './vault.js';
 import { agentSocketPath } from './crypto/keysource.js';
@@ -176,7 +177,7 @@ export class App {
     this.paths = deps.paths ?? resolvePaths();
     this.cfg = deps.cfg ?? loadConfig(this.paths);
     this.runner = deps.runner ?? defaultRunner;
-    this.audit = new AuditLog(this.paths.auditFile, { session: this.session, agent: deps.agent ?? process.env.VEILFORM_AGENT });
+    this.audit = new AuditLog(this.paths.auditFile, { session: this.session, agent: deps.agent ?? envVar('AGENT') });
     this.approvals = new Approvals(this.paths.approvalsFile);
     this.ui = new UiServer({ lang: this.cfg.ui.lang });
     this.ssh = new Ssh(this.cfg, this.runner, path.join(this.paths.home, 'known_hosts'));
@@ -683,7 +684,7 @@ export class App {
           ...(env_file ? [{ label: 'encrypted .env (decrypted in memory, child env only)', value: `${path.resolve(env_file.file)}: ${envKeys.join(', ')}` }] : []),
           { label: 'action', value: action.action === 'exec' ? (action.shell ? 'exec (shell)' : 'exec (argv, no shell)') : 'http' },
           ...(action.action === 'exec' && action.cwd ? [{ label: 'cwd', value: action.cwd }] : []),
-          { label: 'agent session', value: `${this.session}${process.env.VEILFORM_AGENT ? ` (${process.env.VEILFORM_AGENT})` : ''}` },
+          { label: 'agent session', value: `${this.session}${envVar('AGENT') ? ` (${envVar('AGENT')})` : ''}` },
         ],
         literal: actionLiteral(action) + (env_file ? `\n+ env from ${path.resolve(env_file.file)}: ${envKeys.join(', ')}` : ''),
         warnings: actionWarnings(action, lang),
@@ -831,7 +832,7 @@ export class App {
         items: [
           { label: 'site', value: `${a.site} (${site.origins.join(', ')})` },
           { label: 'stores as', value: `${a.name} → ${store.describe()}` },
-          { label: 'browser', value: this.cfg.web.headless ? 'headless' : 'visible window owned by veilform (log in there yourself)' },
+          { label: 'browser', value: this.cfg.web.headless ? 'headless' : 'visible window owned by Veil (log in there yourself)' },
         ],
         literal: stepsLiteral(url, a.steps, a.extract),
         warnings: [],
@@ -907,7 +908,7 @@ export class App {
           { label: 'host', value: `${target.user ? target.user + '@' : ''}${target.hostname}:${target.port}` },
           { label: 'host key fingerprints', value: scan.fingerprints.join('\n') },
           { label: 'known host', value: scan.known ? 'yes (already in known_hosts)' : 'NO: compare these fingerprints with your provider panel / server console' },
-          { label: 'private key storage', value: a.storage === 'store' ? `secret store (${this.vault.internalDestination}), loaded into a private ssh-agent` : 'file 0600 in the veilform directory' },
+          { label: 'private key storage', value: a.storage === 'store' ? `secret store (${this.vault.internalDestination}), loaded into a private ssh-agent` : 'file 0600 in the Veil directory' },
         ],
         needsConfirm: false,
         rememberable: false,
@@ -995,5 +996,5 @@ function pageFix(e: unknown, lang: Lang): PageFix | undefined {
 /** Language for server-built page labels: config, else the process locale. */
 export function serverLang(configured: 'auto' | Lang, env: NodeJS.ProcessEnv = process.env): Lang {
   if (configured !== 'auto') return configured;
-  return /^es/i.test(env.VEILFORM_LANG ?? env.LC_ALL ?? env.LC_MESSAGES ?? env.LANG ?? '') ? 'es' : 'en';
+  return localeLang(env);
 }

@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { LocalFileIO, SshFileIO } from '../fileio.js';
 import type { Runner } from '../proc.js';
 import type { Ssh } from '../ssh.js';
+import { isOwnEnvVar } from '../naming.js';
 import { expandHome, UserError } from '../util.js';
 import { packSingle, unpackSingle } from './bundle.js';
 
@@ -30,6 +31,7 @@ const Auth = z
   ])
   .default({ scheme: 'none' });
 
+// The default git path / S3 prefix keep the former name on purpose: bundles already pushed live there.
 export const SyncTargetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('dir'), path: z.string(), layout: Layout }),
   z.object({ type: z.literal('ssh'), host: z.string(), path: z.string(), layout: Layout }),
@@ -147,7 +149,7 @@ export class GitTarget implements BlobTarget {
   }
   private async git(args: string[], cwd?: string): Promise<{ code: number | null; out: string }> {
     const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '/bin/false', LC_ALL: 'C' };
-    for (const k of Object.keys(env)) if (k.startsWith('VEILFORM')) delete env[k];
+    for (const k of Object.keys(env)) if (isOwnEnvVar(k)) delete env[k];
     const r = await this.runner(['git', ...args], { cwd, env, timeoutMs: 120_000 });
     return { code: r.code, out: r.stdout.toString('utf8') };
   }
@@ -192,7 +194,7 @@ export class GitTarget implements BlobTarget {
     await this.must(['add', '-A', '--', this.sub], this.work);
     const st = await this.must(['status', '--porcelain'], this.work);
     if (st.trim()) {
-      await this.must(['-c', 'user.name=veilform', '-c', 'user.email=veilform@localhost', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message], this.work);
+      await this.must(['-c', 'user.name=veil', '-c', 'user.email=veil@localhost', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message], this.work);
       await this.must(['push', '-q', 'origin', `HEAD:refs/heads/${this.branch}`], this.work, 'git_push_failed');
     }
     this.dirty = false;

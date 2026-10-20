@@ -1,8 +1,8 @@
 export type Lang = 'en' | 'es';
 
 const en = {
-  appName: 'veilform',
-  localNotice: 'Local page served by veilform on this computer. Check that the address bar shows http://127.0.0.1. The AI agent cannot see what you type here.',
+  appName: 'Veil',
+  localNotice: 'Local page served by Veil on this computer. Check that the address bar shows http://127.0.0.1. The AI agent cannot see what you type here.',
   requestId: 'Request',
   submit: 'Save securely',
   send: 'Send',
@@ -73,7 +73,7 @@ const en = {
   err_gone: 'Not found: revoked, already consumed or never uploaded.',
   err_expired: 'This share has expired.',
   err_consumed: 'This share was already consumed.',
-  err_bad_token: 'This is not a veilform share token.',
+  err_bad_token: 'This is not a veil share token.',
   savedLocalVault: "Stored in Veil's encrypted store (the OS keychain was not available).",
   fbTitle: 'The OS keychain could not be used',
   fbFixLabel: 'To fix it for good:',
@@ -85,7 +85,7 @@ const en = {
   fbPassHelp: 'At least {n} characters. A few random words work well.',
   fbBackup: 'Important: if you forget this password, nobody can recover the values stored with it (not even Veil). Keep it in your password manager or on paper, and back up the encrypted file.',
   fbAck: 'I understand, and I keep a copy of the master password somewhere safe',
-  fbUnlockFor: 'It stays unlocked in memory for {n} minutes ("veilform lock" forgets it sooner).',
+  fbUnlockFor: 'It stays unlocked in memory for {n} minutes ("veil lock" forgets it sooner).',
   fbSubmit: 'Continue with the encrypted store',
   fbFile: 'File',
   fixTitle: 'How to fix it',
@@ -95,8 +95,8 @@ const en = {
 };
 
 const es: typeof en = {
-  appName: 'veilform',
-  localNotice: 'Página local servida por veilform en esta computadora. Verifica que la barra de direcciones muestre http://127.0.0.1. El agente de IA no puede ver lo que escribas aquí.',
+  appName: 'Veil',
+  localNotice: 'Página local servida por Veil en esta computadora. Verifica que la barra de direcciones muestre http://127.0.0.1. El agente de IA no puede ver lo que escribas aquí.',
   requestId: 'Solicitud',
   submit: 'Guardar de forma segura',
   send: 'Enviar',
@@ -167,7 +167,7 @@ const es: typeof en = {
   err_gone: 'No encontrado: revocado, ya consumido o nunca subido.',
   err_expired: 'Esta compartición caducó.',
   err_consumed: 'Esta compartición ya fue consumida.',
-  err_bad_token: 'Esto no es un token de compartir de veilform.',
+  err_bad_token: 'Esto no es un token de compartir de Veil.',
   savedLocalVault: 'Guardado en el almacén cifrado de Veil (el llavero del sistema no estaba disponible).',
   fbTitle: 'No se pudo usar el llavero del sistema',
   fbFixLabel: 'Para arreglarlo de forma permanente:',
@@ -179,7 +179,7 @@ const es: typeof en = {
   fbPassHelp: 'Al menos {n} caracteres. Unas cuantas palabras al azar funcionan bien.',
   fbBackup: 'Importante: si olvidas esta contraseña, nadie puede recuperar los valores guardados con ella (ni siquiera Veil). Guárdala en tu gestor de contraseñas o en papel, y respalda el archivo cifrado.',
   fbAck: 'Entiendo, y guardo una copia de la contraseña maestra en un lugar seguro',
-  fbUnlockFor: 'Queda desbloqueado en memoria {n} minutos ("veilform lock" lo olvida antes).',
+  fbUnlockFor: 'Queda desbloqueado en memoria {n} minutos ("veil lock" lo olvida antes).',
   fbSubmit: 'Continuar con el almacén cifrado',
   fbFile: 'Archivo',
   fixTitle: 'Cómo arreglarlo',
@@ -190,6 +190,12 @@ const es: typeof en = {
 
 export const STRINGS: Record<Lang, typeof en> = { en, es };
 export type Strings = typeof en;
+
+/** Language from the process locale (VEIL_LANG, then LC_ALL / LC_MESSAGES / LANG). */
+export function localeLang(env: NodeJS.ProcessEnv = process.env): Lang {
+  const l = env.VEIL_LANG ?? env.VEILFORM_LANG ?? env.LC_ALL ?? env.LC_MESSAGES ?? env.LANG ?? '';
+  return /^es/i.test(l) ? 'es' : 'en';
+}
 
 export function pickLang(configured: 'auto' | Lang, query: string | null, acceptLanguage: string | undefined): Lang {
   if (query === 'en' || query === 'es') return query;

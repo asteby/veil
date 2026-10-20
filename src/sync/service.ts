@@ -234,7 +234,7 @@ export class VaultSync {
     await t.put(MANIFEST, files.get(MANIFEST)!);
     let removed = 0;
     for (const o of remote?.objects ?? []) if (!files.has(objectPath(o.id)) && (await t.delete(objectPath(o.id)))) removed++;
-    await t.commit(`veilform sync seq ${manifest.seq}`);
+    await t.commit(`veil sync seq ${manifest.seq}`);
     this.d.audit.write('vault_synced', { target: targetId, bundle: manifest.bundle_id, seq: manifest.seq, count: names.length, pulled: Boolean(pulled) });
     return { target: targetId, pulled, pushed: { seq: manifest.seq, count: names.length }, removed_objects: removed };
   }
@@ -348,7 +348,7 @@ export class VaultSync {
       put = async (files) => {
         for (const [p, b] of files) if (p !== MANIFEST) await t!.put(p, b);
         await t!.put(MANIFEST, files.get(MANIFEST)!);
-        await t!.commit('veilform rekey');
+        await t!.commit('veil rekey');
       };
     } else if (where.file) {
       const buf = await this.io.read(where.file);

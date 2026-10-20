@@ -139,7 +139,7 @@ export function parseManifest(buf: Buffer | null): Manifest {
   } catch {
     throw new UserError('manifest is not valid JSON', 'malformed');
   }
-  if (m?.format !== 'veilform-bundle') throw new UserError('not a veilform bundle', 'malformed');
+  if (m?.format !== 'veilform-bundle') throw new UserError('not a Veil bundle', 'malformed');
   if (m.v !== 1) throw new UserError(`unsupported bundle version ${String(m.v)}`, 'unsupported_version');
   if (typeof m.bundle_id !== 'string' || !Number.isSafeInteger(m.seq) || m.seq < 0 || !Array.isArray(m.objects) || typeof m.index !== 'string' || !m.key || typeof m.key.check !== 'string') throw new UserError('malformed manifest', 'malformed');
   if (m.key.kdf) checkKdfParams(m.key.kdf);
@@ -227,7 +227,7 @@ export function unpackSingle(buf: Buffer): Map<string, Buffer> {
   } catch {
     throw new UserError('bundle file is not valid JSON', 'malformed');
   }
-  if (j.format !== 'veilform-bundle-file' || j.v !== 1 || !j.files) throw new UserError('not a veilform bundle file', 'malformed');
+  if (j.format !== 'veilform-bundle-file' || j.v !== 1 || !j.files) throw new UserError('not a Veil bundle file', 'malformed');
   return new Map(Object.entries(j.files).map(([p, s]) => [p, Buffer.from(s, 'base64')]));
 }
 

@@ -65,7 +65,7 @@ export interface ParsedToken {
 
 export function parseToken(token: string): ParsedToken {
   const m = TOKEN_RE.exec(token.trim());
-  if (!m) throw new UserError('not a veilform share token', 'bad_token');
+  if (!m) throw new UserError('not a veil share token', 'bad_token');
   return { target: m[1]!, shareId: m[2]!, key: unb64(m[3]!) };
 }
 
@@ -152,7 +152,7 @@ export class Shares {
     const t = this.d.target(a.targetId);
     await t.begin();
     await t.put(bundlePath(shareId), Buffer.from(JSON.stringify({ ...h, payload }) + '\n'));
-    await t.commit(`veilform share ${shareId}`);
+    await t.commit(`veil share ${shareId}`);
     const record: ShareRecord = { share_id: shareId, names: a.items.map((i) => i.name), target: a.targetId, created_at: h.created_at, expires_at: h.expires_at, max_views: a.maxViews, passphrase: Boolean(h.kdf), note: a.note };
     await this.saveRecord(record);
     return { record, token: formatToken(a.targetId, shareId, tokenKey) };
@@ -176,7 +176,7 @@ export class Shares {
     await t.begin();
     const a = await t.delete(bundlePath(shareId));
     await t.delete(viewsPath(shareId));
-    await t.commit(`veilform revoke ${shareId}`);
+    await t.commit(`veil revoke ${shareId}`);
     await this.saveRecord({ ...st.record!, revoked_at: this.now().toISOString() });
     return { revoked: a || !st.present, was_read: st.read, names: st.record!.names, history_kept: !t.deletesForReal };
   }
@@ -248,7 +248,7 @@ export class Shares {
         await t.delete(bundlePath(tk.shareId));
         await t.delete(viewsPath(tk.shareId));
       } else await t.put(viewsPath(tk.shareId), Buffer.from(seal(key, JSON.stringify({ views }), viewsAad(tk.shareId))));
-      await t.commit(`veilform share view ${tk.shareId}`);
+      await t.commit(`veil share view ${tk.shareId}`);
       const items = body.items.map((it) => {
         const dek = open(key, it.wdek, dekAad(tk.shareId, it.name));
         const value = open(dek, it.ct, itemAad(tk.shareId, it.name)).toString('utf8');

@@ -292,7 +292,7 @@ export class VaultTools {
     } else if (a.token) token = a.token.trim();
     if (token) {
       this.app.sensitive.add('share_token', token);
-      if (!TOKEN_RE.test(token)) throw new UserError('not a veilform share token', 'bad_token');
+      if (!TOKEN_RE.test(token)) throw new UserError('not a veil share token', 'bad_token');
       this.app.sensitive.add('share_key', token.split('#')[1]!);
     }
     const destination = a.destination ?? this.cfg.defaultDestination;
@@ -349,7 +349,7 @@ export class VaultTools {
       return false;
     } catch (e) {
       if (doc.recipients.some((r) => r.type === 'pass')) return true;
-      throw new UserError('no key available here for this file: configure a key file (env.keyFiles / VEILFORM_KEY_FILE) or unlock it with a share token (env_unlock)', e instanceof UserError ? e.code : 'wrong_key');
+      throw new UserError('no key available here for this file: configure a key file (env.keyFiles / VEIL_KEY_FILE) or unlock it with a share token (env_unlock)', e instanceof UserError ? e.code : 'wrong_key');
     }
   }
 
@@ -366,7 +366,7 @@ export class VaultTools {
     const hasPass = doc.recipients.some((r) => r.type === 'pass');
     const fields: FieldDef[] = [
       ...(hasPass ? [{ ...passField('passphrase', `Passphrase for ${doc.context}`), required: false }] : []),
-      { ...passField('token', 'or a share token (vfs1://...)', 'A token created with "veilform env share"'), required: false },
+      { ...passField('token', 'or a share token (vfs1://...)', 'A token created with "veil env share"'), required: false },
     ];
     return this.personStep('env_unlock', { title: `Unlock ${doc.context}`, lines: [{ label: 'file', value: file }, { label: 'unlocked for', value: `${a.minutes} min, in this server's memory only` }], fields, fragmentField: 'token' }, async (v) => {
       let dek: Buffer | undefined;
@@ -550,7 +550,7 @@ export class VaultTools {
 }
 
 /**
- * Local reveal page for a PERSON receiving a share (`veilform share open`): the token comes in
+ * Local reveal page for a PERSON receiving a share (`veil share open`): the token comes in
  * the URL fragment (or is pasted), the passphrase is typed there, values are shown only on that
  * page with copy buttons and hidden again after `hideAfter` seconds. Nothing is printed, logged
  * or returned through MCP.

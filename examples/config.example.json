@@ -3,8 +3,8 @@
   "cacheTtlSeconds": 60,
   "defaultDestination": "local",
   "destinations": {
-    "local": { "type": "keychain", "service": "veilform" },
-    "vault": { "type": "encrypted-file", "path": "~/.config/veilform/data/secrets.enc", "key": { "source": "keychain" } },
+    "local": { "type": "keychain", "service": "veilform", "fallback": "ask" },
+    "vault": { "type": "encrypted-file", "path": "~/.config/veil/data/secrets.enc", "key": { "source": "keychain" } },
     "dev-dotenv": { "type": "env-file", "path": "~/projects/myapp/.env" },
     "prod-env": { "type": "env-file", "host": "prod-vps", "path": "/etc/myapp/myapp.env", "owner": "app", "group": "app", "backup": true },
     "prod-files": { "type": "ssh-file", "host": "prod-vps", "path": "/etc/myapp/secrets/{name}", "mode": "0640", "owner": "root", "group": "app" },
@@ -63,5 +63,20 @@
       "stripe": { "origins": ["https://dashboard.stripe.com"], "startUrl": "https://dashboard.stripe.com/apikeys" }
     }
   },
-  "ops": { "baseUrl": "https://panel.example.com", "tokenRef": "local:ops_token" }
+  "ops": { "baseUrl": "https://panel.example.com", "tokenRef": "local:ops_token" },
+  "localVault": { "unlockMinutes": 15 },
+  "sync": {
+    "targets": {
+      "backup-dir": { "type": "dir", "path": "~/Backups/veil" },
+      "r2": { "type": "s3", "endpoint": "https://YOUR_ACCOUNT.r2.cloudflarestorage.com", "bucket": "vault", "accessKeyRef": "R2_ID", "secretKeyRef": "R2_SECRET" },
+      "repo": { "type": "git", "url": "git@github.com:your-org/vault-backup.git" }
+    },
+    "secondFactor": { "type": "key-file", "path": "~/.config/veil/sync.key" },
+    "shareTarget": "r2",
+    "unlockMinutes": 10
+  },
+  "env": {
+    "files": ["~/projects/**/.env", "~/projects/**/.env.*"],
+    "keyFiles": ["~/.config/veil/keys/myapp.key"]
+  }
 }

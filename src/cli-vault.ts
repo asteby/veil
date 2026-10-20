@@ -52,7 +52,7 @@ const flags = (a: Args, k: string) => a.flags.get(k) ?? [];
 const has = (a: Args, k: string) => a.flags.has(k);
 
 const out = (o: unknown) => process.stdout.write((typeof o === 'string' ? o : JSON.stringify(o, null, 2)) + '\n');
-const err = (s: string) => process.stderr.write(`[veilform] ${s}\n`);
+const err = (s: string) => process.stderr.write(`[veil] ${s}\n`);
 
 /** Reads a line from the controlling TTY without echo. */
 export async function askTty(prompt: string): Promise<string | undefined> {
@@ -155,10 +155,10 @@ async function envOpenOpts(app: App, a: Args, file: string) {
 
 function hookScript(): string {
   const cli = fileURLToPath(new URL('./cli.js', import.meta.url));
-  return `#!/bin/sh\n# veilform: refuse to commit plaintext .env files\nexec "${process.execPath}" "${cli}" env check-staged\n`;
+  return `#!/bin/sh\n# veil: refuse to commit plaintext .env files\nexec "${process.execPath}" "${cli}" env check-staged\n`;
 }
 
-export const VAULT_HELP = `veilform — encrypted sync, shares and encrypted .env files
+export const VAULT_HELP = `veil — encrypted sync, shares and encrypted .env files
 
   export --out FILE.vfb                       encrypted backup of the vault
   import (--file F | --target T) [--strategy report|keep-local|take-remote|keep-both] [--destination D] [--allow-rollback]
@@ -169,7 +169,7 @@ export const VAULT_HELP = `veilform — encrypted sync, shares and encrypted .en
   env encrypt FILE [--out F] [--key-file K]... [--new-key-file K] [--keychain] [--no-passphrase] [--shred]
   env decrypt FILE (--out F | to a TTY)        plaintext only to a terminal or an explicit file
   env edit FILE                                local page: change values without showing them to anyone else
-  env run FILE [--only K1,K2] [--raw] -- CMD   also: veilform run --env FILE -- CMD
+  env run FILE [--only K1,K2] [--raw] -- CMD   also: veil run --env FILE -- CMD
   env diff FILE [--against F|git:REV]          names of added/removed/changed keys
   env rotate FILE                              new data key, everything re-encrypted
   env recipients FILE [--add-key-file K]... [--passphrase] [--remove ID]   (unlock with --key-file / passphrase)
@@ -180,8 +180,8 @@ export const VAULT_HELP = `veilform — encrypted sync, shares and encrypted .en
   agent                                        session agent (in-memory key cache, 0600 socket)
   lock                                         forget every cached key (agent + this process), incl. Veil's encrypted store
 
-Unlock methods for env files: --key-file / VEILFORM_KEY_FILE, OS keychain (config env.keychain),
-systemd LoadCredential=veilform-key, session agent, passphrase (TTY or --ui local page), --token-file.`;
+Unlock methods for env files: --key-file / VEIL_KEY_FILE, OS keychain (config env.keychain),
+systemd LoadCredential=veil-key (or the former veilform-key), session agent, passphrase (TTY or --ui local page), --token-file.`;
 
 /** Returns an exit code, or undefined when argv is not a vault command. */
 export async function runVaultCli(argv: string[], makeApp: () => App): Promise<number | undefined> {
@@ -197,7 +197,7 @@ export async function runVaultCli(argv: string[], makeApp: () => App): Promise<n
     const sock = agentSocketPath(resolvePaths().home);
     const ag = new SessionAgent(sock);
     await ag.start();
-    err(`session agent listening on ${sock} (Ctrl-C or "veilform lock" + kill to stop)`);
+    err(`session agent listening on ${sock} (Ctrl-C or "veil lock" + kill to stop)`);
     await new Promise<void>((r) => {
       process.on('SIGINT', r);
       process.on('SIGTERM', r);
@@ -248,7 +248,7 @@ export async function runVaultCli(argv: string[], makeApp: () => App): Promise<n
       case 'run': {
         const ra = parseArgs(argv.slice(1));
         const file = flag(ra, 'env');
-        if (!file) throw new UserError('veilform run --env FILE -- CMD', 'invalid_args');
+        if (!file) throw new UserError('veil run --env FILE -- CMD', 'invalid_args');
         return await app.envFiles.run(file, ra.rest, { ...(await envOpenOpts(app, ra, file)), raw: has(ra, 'raw'), only: flag(ra, 'only')?.split(',') });
       }
     }
@@ -295,7 +295,7 @@ async function envCmd(app: App, sub: string | undefined, a: Args): Promise<numbe
   if (sub === 'keygen') {
     if (!file) throw new UserError('env keygen PATH', 'invalid_args');
     const k = createKeyFile(file);
-    out({ key_file: k.where, key_id: k.id, note: 'keep it out of the repository; copy it to the server out of band (e.g. LoadCredential=veilform-key:/etc/veilform/app.key)' });
+    out({ key_file: k.where, key_id: k.id, note: 'keep it out of the repository; copy it to the server out of band (e.g. LoadCredential=veil-key:/etc/veil/app.key)' });
     return 0;
   }
   if (sub === 'check-staged') {
@@ -303,7 +303,7 @@ async function envCmd(app: App, sub: string | undefined, a: Args): Promise<numbe
     const files = names.filter((n) => /(^|\/)\.env(\.[A-Za-z0-9_.-]+)?$/.test(n)).map((n) => ({ path: n, content: execFileSync('git', ['show', `:${n}`]).toString('utf8') }));
     const bad = plaintextEnvFiles(files);
     if (bad.length) {
-      err(`refusing to commit plaintext env files: ${bad.join(', ')} — encrypt them (veilform env encrypt) or add them to .gitignore`);
+      err(`refusing to commit plaintext env files: ${bad.join(', ')} — encrypt them (veil env encrypt) or add them to .gitignore`);
       return 1;
     }
     return 0;
@@ -314,7 +314,7 @@ async function envCmd(app: App, sub: string | undefined, a: Args): Promise<numbe
     const hooks = path.isAbsolute(gitDir) ? gitDir : path.join(repo, gitDir);
     mkdirSync(hooks, { recursive: true });
     const f = path.join(hooks, 'pre-commit');
-    if (existsSync(f) && !readFileSync(f, 'utf8').includes('veilform')) throw new UserError(`${f} exists; add "veilform env check-staged" to it yourself`, 'exists');
+    if (existsSync(f) && !readFileSync(f, 'utf8').includes('veil')) throw new UserError(`${f} exists; add "veil env check-staged" to it yourself`, 'exists');
     writeFileSync(f, hookScript());
     chmodSync(f, 0o755);
     out({ installed: f });
@@ -380,7 +380,7 @@ async function envCmd(app: App, sub: string | undefined, a: Args): Promise<numbe
       const minutes = Number(flag(a, 'minutes') ?? 15);
       const agent = await E.remember(doc, dek, minutes);
       app.audit.write('env_unlocked', { file, context: doc.context, via: via.startsWith('key:') ? 'key' : via, minutes, agent });
-      out({ file, unlocked: agent, minutes, via: via.startsWith('key:') ? 'key' : via, note: agent ? 'cached in the session agent' : 'no session agent running (start one with "veilform agent"); nothing cached' });
+      out({ file, unlocked: agent, minutes, via: via.startsWith('key:') ? 'key' : via, note: agent ? 'cached in the session agent' : 'no session agent running (start one with "veil agent"); nothing cached' });
       return agent ? 0 : 1;
     }
     case 'share': {
