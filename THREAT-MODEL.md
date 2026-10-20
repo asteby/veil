@@ -108,3 +108,38 @@ Append-only JSONL with a SHA-256 hash chain (`prev` field); `veilform verify-aud
 - Scope remote-store tokens narrowly; rotate (`secret_rotate`, `rotate_after_days`).
 - Review `approvals.json` periodically; delete entries to force re-approval.
 - Run `veilform verify-audit` in your backups.
+
+## 8. Sync, sharing and encrypted .env files
+
+### 8.1 What is protected
+- **Storage targets see opaque blobs only.** Bundles carry random object ids; names, destinations, tags and values live inside AES-256-GCM ciphertexts. A target learns the number and size of objects, when they change, and the KDF parameters. Tested: no name or value reaches the simulated HTTP/WebDAV/S3 servers, the folder, the git history or the SSH folder (`test/sync.test.ts`).
+- **Envelope encryption.** One random DEK per secret (per export) and per share item; DEKs wrapped by the KEK (vault) or the share key. KEK = HKDF(argon2id(passphrase) [64 MiB, 3 passes] or scrypt(N=2^17) ‖ optional key file / keychain secret). Only `node:crypto` primitives; known-answer tests (RFC 7914 scrypt, RFC 9106 argon2id, RFC 5869 HKDF, GCM, AWS SigV4) in `test/crypto.test.ts`. KDF parameters read from a header are bounded (no downgrade, no memory bomb).
+- **Integrity / anti-swap / anti-rollback.** The bundle header (version, bundle id, monotonic `seq`, key header, sha256 of every object) is the AAD of the encrypted index; each object binds bundle id, object id, destination, name and version in its AAD. Bit flips, swapped or missing objects, edited headers and wrong keys fail; a bundle older than the highest `seq` seen on this device is refused (`rollback`) unless `allow_rollback`.
+- **No silent overwrite.** Vector clocks per secret; concurrent edits are reported (or resolved by an explicit strategy). Deletions are not propagated (no tombstones yet): a secret deleted on one device comes back on the next import.
+- **Shares.** Fresh 256-bit key per share, carried in the token's URL fragment `vfs1://<target>/<id>#<key>`: browsers never send fragments, the reveal page copies it into a field and removes it from the address bar/history, the page makes no external request (CSP `connect-src 'self'`, `Referrer-Policy: no-referrer`). Optional passphrase as a second factor (another channel), argon2id-hardened and limited to 5 failed attempts per share id on each machine (then a lock that doubles). Expiry and max views are in the authenticated header (editing them breaks decryption). Every create/read/revoke is in the hash-chained audit log.
+- **Model never sees values, keys or tokens.** Passphrases and tokens are typed or shown only on local pages; tool results contain names/counts/ids; tokens given via `token_file`/`token` are registered in the scrub registry. Property tests check responses, MCP wire, audit, stderr, state files and stored blobs for values, the token, its key and the KEK (`test/sync.test.ts`, `test/envtools.test.ts`).
+- **Encrypted .env.** Values at rest and in git are AES-256-GCM per value, AAD = context (file/environment name) + key: a value moved to another key or file does not decrypt; a whole-file HMAC detects added/removed/reordered lines. `veilform run` puts values only in the child's environment (not argv, not disk, not the parent env) and redacts its output; `env decrypt` refuses to print plaintext to a pipe.
+
+### 8.2 Honest limits (NOT protected)
+1. **Whoever has token + passphrase can decrypt and copy.** Sharing hands out the value; nothing technical can take it back.
+2. **Revoking does not make anyone forget.** `share_revoke` deletes the bundle; if it was read (views file present or bundle burnt) rotate the secret (`share_revoke({rotate:true})` opens `secret_rotate`). **After sharing with a person, rotate as a rule** once they no longer need it.
+3. **Burn-after-read and max views are best effort.** They are enforced by honest veilform receivers: the counter lives next to the bundle and is updated after reading. A receiver that copies the bundle first, a storage that keeps versions (S3 versioning, Dropbox history, backups) or **a git target (history keeps every bundle forever)** defeats it, and two receivers racing may both read. The local "already consumed" list only stops replays on the same machine. Expiry is checked against the receiver's clock.
+4. **The storage provider can delete, withhold or roll back** blobs (denial of service). Rollback is detected only on devices that saw a newer `seq`; a brand-new device trusts the first bundle it sees. There is no lock between devices: two simultaneous pushes may race (the later manifest wins; the next pull reports it).
+5. **Offline guessing.** Anyone holding a bundle (or a share bundle with a passphrase) can guess passphrases offline at argon2id/scrypt cost; attempt limits only protect our own UI. Use long passphrases or the key-file second factor.
+6. **Key files, keychain, systemd credentials and the session agent** are readable by the same OS user / root (see §6.3). The agent socket is 0600 in a 0700 directory: same trust as the keychain. `veilform lock` forgets cached keys; the MCP process also caches KEK/DEKs for `sync.unlockMinutes`.
+7. **Encrypted .env keeps key NAMES, comments and the file structure in clear on purpose** (reviewable diffs), and anything that is not a `KEY=value` line stays as is. Values are in clear inside the server process and the child process once decrypted; `secret_use`/`secret_write` from an env file need approval like any other action, and a deployed decrypted `.env` is plaintext on the server (deploy the encrypted file `as_is` + `veilform run` instead). Old ciphertexts stay in git history: rotating the file key does not protect values that were readable with the old key — rotate the values themselves.
+8. **`--shred` is best effort**: SSDs, copy-on-write filesystems, snapshots and backups may keep old blocks.
+9. **A token in argv** (`--token`) is visible to `ps` and shell history (a warning is printed); `share_import({token})` shows the key to the model — prefer `token_file` or pasting on the page.
+10. **Not post-quantum**, no forward secrecy between exports (one KEK protects all bundles until `rekey`).
+
+### 8.3 Comparison
+| | veilform | age | sops | 1Password sharing | Vault response wrapping |
+|---|---|---|---|---|---|
+| Encryption | AES-256-GCM + argon2id/scrypt + HKDF (node:crypto) | X25519/scrypt + ChaCha20-Poly1305 | data key per file, KMS/age/PGP recipients | server-side vault | token-bound cubbyhole |
+| Per-value, git-friendly files | yes (`.env`) | no (whole file) | yes (YAML/JSON/.env), MAC over file | no | no |
+| Public-key recipients | no (symmetric keys/passphrases) | yes | yes | n/a | n/a |
+| Link/token sharing | yes, key in fragment, expiry, views, optional passphrase | no | no | yes (expiry, views, email gating), server enforced | single-use wrapping token, TTL, server enforced |
+| Enforcement of views/expiry | client side, best effort | n/a | n/a | server side | server side (strong single use) |
+| Model never sees values | yes (local pages, blind use) | n/a | n/a | n/a | n/a |
+
+Use Vault response wrapping or 1Password when you need *server-enforced* single use; use age/sops when you need public-key recipients. veilform's value is that agents can move, back up and share secrets without any value entering the model context.

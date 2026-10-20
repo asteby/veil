@@ -100,3 +100,43 @@ Deviations from the original design brief (documented): the keychain uses the pl
 ## License
 
 [MIT](LICENSE)
+
+## Sync y compartir
+
+*(encrypted backup/sync, token sharing and encrypted `.env` files — added in 0.2.0)*
+
+**New MCP tools** (results are names, counts and ids only; passphrases and tokens are typed/shown on the local page):
+
+| Tool | What it does |
+|---|---|
+| `vault_export` / `vault_sync` / `vault_import` / `vault_rekey` | Encrypted bundle of the vault to a `.vfb` file or a sync target; restore with integrity, anti-rollback and conflict detection; KEK rotation |
+| `share_create` / `share_list` / `share_revoke` / `share_import` | Share chosen secrets by token (expiry, max views, optional passphrase); revoke (+ rotate); import into another agent's vault blindly |
+| `env_status` / `env_unlock` / `env_encrypt` / `env_edit` / `env_diff` / `env_rotate` | Git-friendly encrypted `.env` files; `secret_use({env_file})` and `secret_write({from:{kind:"env-enc"}})` use them without the model seeing values |
+
+**Bundle** (`manifest.json` + `o/<random id>` per secret, or one `.vfb` file): one random AES-256-GCM data key (DEK) per secret, wrapped by a KEK = HKDF(argon2id/scrypt(passphrase) ‖ optional key file / keychain secret). Names and metadata live only in the encrypted index; the header (format version, bundle id, monotonic `seq`, key parameters, sha256 of each object) is the AAD of the index, so swapped, truncated, edited or older (rollback) bundles are rejected. Each secret carries a vector clock: `vault_sync` never overwrites a concurrent change silently (`strategy`: `report`, `keep-local`, `take-remote`, `keep-both`).
+
+**Targets** (`sync.targets` in the config, allowlist): `dir`, `ssh` (host from `ssh.hosts`), `git` (private repo; `git` spawned by argv, credentials from your ssh-agent/credential helper), `s3` (S3/R2/MinIO, built-in SigV4), `webdav`, `http`. Credentials for targets are references to the local store (`tokenRef`, `accessKeyRef`…), never inline.
+
+```json
+"sync": {
+  "targets": { "r2": { "type": "s3", "endpoint": "https://<account>.r2.cloudflarestorage.com", "bucket": "vault", "accessKeyRef": "R2_ID", "secretKeyRef": "R2_SECRET" },
+               "repo": { "type": "git", "url": "git@github.com:me/vault-backup.git" } },
+  "secondFactor": { "type": "key-file", "path": "~/.config/veilform/sync.key" },
+  "shareTarget": "r2"
+}
+```
+
+**Token** = `vfs1://<target>/<share_id>#<key>` — the key is in the URL fragment (never sent to any server). The bundle is encrypted with HKDF(key ‖ argon2id(passphrase)) when `require_passphrase`; expiry and max views are inside the authenticated header. A person opens it with `veilform share open` (local page, token in the fragment or pasted, values hidden again after N s); another agent uses `share_import({token_file})` and then `secret_use`.
+
+**Encrypted `.env`** (`#/veilform-env v1` header, `KEY="enc:v1:…"` per value, comments/order kept, whole-file MAC, N recipients):
+
+```bash
+veilform env keygen ~/.config/veilform/keys/myapp.key        # 0600, outside the repo
+veilform env encrypt .env.production --key-file ~/.config/veilform/keys/myapp.key   # + passphrase on TTY
+veilform env hook install                                     # pre-commit refuses plaintext .env
+veilform run --env .env.production -- node server.js           # values only in the child env; output redacted
+veilform env unlock .env.production --status                  # which unlock methods work here (no values)
+veilform env share .env.production --expires 1h --max-views 1 # token that unlocks ONLY this file
+```
+
+Unlock methods: key file (`--key-file`, `VEILFORM_KEY_FILE`, `env.keyFiles`), OS keychain (`env.keychain`), systemd credential (`LoadCredential=veilform-key:…`, see [`examples/systemd/`](examples/systemd/)), session agent (`veilform agent`, `veilform lock`), passphrase (TTY or local page, attempts limited), share token. Limits and comparison with age/sops/1Password/Vault: [THREAT-MODEL.md §8](THREAT-MODEL.md#8-sync-sharing-and-encrypted-env-files).

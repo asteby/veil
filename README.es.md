@@ -79,3 +79,34 @@ Desviaciones del diseño original (documentadas): el llavero usa los CLI del sis
 ## Licencia
 
 [MIT](LICENSE)
+
+## Sync y compartir
+
+*(respaldo/sincronización cifrados, compartir por token y archivos `.env` cifrados — añadido en 0.2.0)*
+
+**Nuevas herramientas MCP** (devuelven solo nombres, conteos e ids; las passphrases y los tokens se escriben/muestran en la página local):
+
+| Herramienta | Qué hace |
+|---|---|
+| `vault_export` / `vault_sync` / `vault_import` / `vault_rekey` | Bundle cifrado de la bóveda a un archivo `.vfb` o a un destino; restauración con integridad, anti-rollback y detección de conflictos; rotación de la KEK |
+| `share_create` / `share_list` / `share_revoke` / `share_import` | Compartir secretos elegidos por token (caducidad, máximo de lecturas, passphrase opcional); revocar (+ rotar); importar a ciegas en la bóveda de otro agente |
+| `env_status` / `env_unlock` / `env_encrypt` / `env_edit` / `env_diff` / `env_rotate` | `.env` cifrados aptos para git; `secret_use({env_file})` y `secret_write({from:{kind:"env-enc"}})` los usan sin que el modelo vea valores |
+
+**Bundle** (`manifest.json` + `o/<id aleatorio>` por secreto, o un solo `.vfb`): una llave de datos (DEK) AES-256-GCM aleatoria por secreto, envuelta por una KEK = HKDF(argon2id/scrypt(passphrase) ‖ archivo de llave / llavero opcional). Nombres y metadatos viven solo en el índice cifrado; la cabecera (versión, id del bundle, `seq` monótono, parámetros de llave, sha256 de cada objeto) es el AAD del índice: bundles con objetos intercambiados, truncados, editados o antiguos (rollback) se rechazan. Cada secreto lleva un reloj vectorial: `vault_sync` nunca sobrescribe en silencio un cambio concurrente (`strategy`: `report`, `keep-local`, `take-remote`, `keep-both`).
+
+**Destinos** (`sync.targets` en la config, lista permitida): `dir`, `ssh` (host de `ssh.hosts`), `git` (repo privado; `git` por argv, credenciales de tu ssh-agent/credential helper), `s3` (S3/R2/MinIO, SigV4 propio), `webdav`, `http`. Las credenciales de los destinos son referencias al almacén local (`tokenRef`, `accessKeyRef`…), nunca en línea. Ejemplo de configuración en la sección en inglés.
+
+**Token** = `vfs1://<destino>/<share_id>#<llave>` — la llave va en el fragmento de la URL (nunca se envía a un servidor). Con `require_passphrase` el bundle se cifra con HKDF(llave ‖ argon2id(passphrase)); la caducidad y el máximo de lecturas van en la cabecera autenticada. Una persona lo abre con `veilform share open` (página local, token en el fragmento o pegado, valores ocultos de nuevo a los N s); otro agente usa `share_import({token_file})` y después `secret_use`.
+
+**`.env` cifrado** (cabecera `#/veilform-env v1`, `CLAVE="enc:v1:…"` por valor, comentarios/orden conservados, MAC de todo el archivo, N destinatarios):
+
+```bash
+veilform env keygen ~/.config/veilform/keys/miapp.key        # 0600, fuera del repo
+veilform env encrypt .env.production --key-file ~/.config/veilform/keys/miapp.key   # + passphrase por TTY
+veilform env hook install                                     # el pre-commit rechaza .env en claro
+veilform run --env .env.production -- node server.js           # valores solo en el entorno del hijo; salida redactada
+veilform env unlock .env.production --status                  # qué métodos de desbloqueo sirven aquí (sin valores)
+veilform env share .env.production --expires 1h --max-views 1 # token que desbloquea SOLO este archivo
+```
+
+Métodos de desbloqueo: archivo de llave (`--key-file`, `VEILFORM_KEY_FILE`, `env.keyFiles`), llavero del SO (`env.keychain`), credencial de systemd (`LoadCredential=veilform-key:…`, ver [`examples/systemd/`](examples/systemd/)), agente de sesión (`veilform agent`, `veilform lock`), passphrase (TTY o página local, intentos limitados), token de compartir. Límites y comparación con age/sops/1Password/Vault: [THREAT-MODEL.md §8](THREAT-MODEL.md#8-sync-sharing-and-encrypted-env-files).
