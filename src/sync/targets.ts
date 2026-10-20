@@ -303,6 +303,11 @@ export class WebDavTarget extends HttpTarget {
   }
   protected override async ensureParents(p: string) {
     const parts = rel(p).split('/').slice(0, -1);
+    if (!this.made.has('')) {
+      const r = await request(this.base.href.endsWith('/') ? this.base.href : this.base.href + '/', { method: 'MKCOL', headers: await this.headers() });
+      if (![201, 405, 301].includes(r.status)) throw new UserError(`webdav MKCOL failed: http_${r.status}`, 'target_failed');
+      this.made.add('');
+    }
     for (let i = 1; i <= parts.length; i++) {
       const dir = parts.slice(0, i).join('/');
       if (this.made.has(dir)) continue;
