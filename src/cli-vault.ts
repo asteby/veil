@@ -45,7 +45,7 @@ export function parseArgs(argv: string[]): Args {
   return { pos, flags, rest };
 }
 
-const VALUE_FLAGS = new Set(['out', 'file', 'target', 'strategy', 'destination', 'key-file', 'new-key-file', 'token', 'token-file', 'minutes', 'expires', 'max-views', 'note', 'against', 'only', 'env', 'remove', 'repo', 'add-key-file', 'context', 'hide-after']);
+const VALUE_FLAGS = new Set(['out', 'file', 'target', 'strategy', 'destination', 'key-file', 'new-key-file', 'token', 'token-file', 'minutes', 'expires', 'max-views', 'note', 'against', 'only', 'env', 'remove', 'repo', 'add-key-file', 'context', 'hide-after', 'lang']);
 
 const flag = (a: Args, k: string) => a.flags.get(k)?.at(-1);
 const flags = (a: Args, k: string) => a.flags.get(k) ?? [];
@@ -55,7 +55,7 @@ const out = (o: unknown) => process.stdout.write((typeof o === 'string' ? o : JS
 const err = (s: string) => process.stderr.write(`[veilform] ${s}\n`);
 
 /** Reads a line from the controlling TTY without echo. */
-async function askTty(prompt: string): Promise<string | undefined> {
+export async function askTty(prompt: string): Promise<string | undefined> {
   if (!process.stdin.isTTY) return undefined;
   process.stderr.write(prompt);
   const stdin = process.stdin;
@@ -87,7 +87,7 @@ async function askTty(prompt: string): Promise<string | undefined> {
 }
 
 /** Asks on the local page (127.0.0.1) and waits; used with --ui or when there is no TTY. */
-async function askPage(app: App, title: string, fields: FieldDef[], lines: { label: string; value: string }[] = []): Promise<Record<string, string> | undefined> {
+export async function askPage(app: App, title: string, fields: FieldDef[], lines: { label: string; value: string }[] = []): Promise<Record<string, string> | undefined> {
   const schema = normalizeSchema({ fields });
   let done!: (v: Record<string, string> | undefined) => void;
   const p = new Promise<Record<string, string> | undefined>((r) => (done = r));
@@ -178,7 +178,7 @@ export const VAULT_HELP = `veilform — encrypted sync, shares and encrypted .en
   env keygen PATH                              new 0600 key file (keep it OUT of the repo)
   env hook install [--repo DIR] | env check-staged
   agent                                        session agent (in-memory key cache, 0600 socket)
-  lock                                         forget every cached key (agent + this process)
+  lock                                         forget every cached key (agent + this process), incl. Veil's encrypted store
 
 Unlock methods for env files: --key-file / VEILFORM_KEY_FILE, OS keychain (config env.keychain),
 systemd LoadCredential=veilform-key, session agent, passphrase (TTY or --ui local page), --token-file.`;
@@ -210,6 +210,7 @@ export async function runVaultCli(argv: string[], makeApp: () => App): Promise<n
     const a = parseArgs(argv.slice(cmd === 'share' || cmd === 'env' ? 2 : 1));
     switch (cmd) {
       case 'lock': {
+        app.vault.lockLocalVaults();
         app.envFiles.lock();
         app.sync.lock();
         try {

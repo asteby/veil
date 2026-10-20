@@ -5,12 +5,14 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "veilform": "dist/cli.js"
+    "veilform": "dist/cli.js",
+    "veil": "dist/cli.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
+    "scripts/postinstall.mjs",
     "README.md",
     "README.es.md",
     "THREAT-MODEL.md",
@@ -36,7 +38,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
