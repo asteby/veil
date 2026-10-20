@@ -110,6 +110,10 @@ test('blind_input: sections, money, conditional field, repeater with spreadsheet
   await page.getByRole('button', { name: 'Importar filas pegadas' }).click();
   await expect(page.getByText('Se importaron 3 filas.')).toBeVisible();
   await expect(page.getByText('3 filas', { exact: true })).toBeVisible();
+  // the CSV picker speaks the page language (not the browser's native "Choose File")
+  await expect(page.getByText('Elegir archivo')).toBeVisible();
+  await expect(page.getByText('Ningún archivo seleccionado')).toBeVisible();
+  await expect(page.getByText('Choose File')).toHaveCount(0);
   await page.getByRole('button', { name: 'Agregar fila' }).click();
   await shot(page, '05-blind-input-repeater-es');
   await page.getByRole('button', { name: 'Enviar precios' }).click();

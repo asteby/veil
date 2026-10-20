@@ -96,6 +96,21 @@ describe('secret_request → store → secret_use (end to end, in process)', () 
     expectNoValue([...responses, readFileSync(path.join(t.home, 'audit.jsonl'), 'utf8'), stderr.join('\n')], VALUE);
   });
 
+  it('approval page texts follow the page language (?lang=es / en), not only ui.lang', async () => {
+    t = makeApp();
+    await t.app.vault.put('local', 'API_KEY', 'tok_live_lang_check_1');
+    const r = (await t.app.secretUse({ action: 'exec', shell: 'curl -H "Authorization: $TOK" https://api.example.com', env: { TOK: '${secret:API_KEY}' } })) as { url: string };
+    const es = await openPage(`${r.url}?lang=es`);
+    const a = es.data.approval as { items: { label: string }[]; warnings: string[] };
+    expect(es.html).toContain('Ejecutar un comando con secretos guardados');
+    expect(a.items.map((i) => i.label)).toEqual(expect.arrayContaining(['secretos', 'acción', 'sesión del agente', 'huella']));
+    expect(a.warnings.join(' ')).toMatch(/Usa un shell/);
+    expect(a.warnings.join(' ')).toMatch(/herramientas de red/);
+    const en = await openPage(`${r.url}?lang=en`, es.cookie);
+    expect((en.data.approval as { warnings: string[] }).warnings.join(' ')).toMatch(/Runs a shell/);
+    expect(en.html).toContain('Run a command with stored secrets');
+  });
+
   it('refuses ${secret:..} in argv and unknown or expired secrets', async () => {
     t = makeApp();
     await expect(t.app.secretUse({ action: 'exec', command: ['echo', '${secret:A}'] })).rejects.toThrow(/argv/);
