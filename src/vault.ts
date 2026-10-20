@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Config, Paths } from './config.js';
+import { localVaultPath, type Config, type Paths } from './config.js';
+import { isKeychainFailure } from './errors.js';
+import { LocalVault } from './localvault.js';
 import { LocalFileIO, SshFileIO } from './fileio.js';
 import type { Runner } from './proc.js';
 import type { SensitiveRegistry } from './redact.js';
@@ -11,7 +13,7 @@ import { EnvFileStore, SshFileStore } from './stores/file-stores.js';
 import { HttpApiStore } from './stores/http-api.js';
 import { defaultKeychainBackend, KeychainStore, type KeychainBackend } from './stores/keychain.js';
 import type { SecretStore } from './stores/types.js';
-import { assertName, KeyedMutex, UserError } from './util.js';
+import { assertName, expandHome, KeyedMutex, UserError } from './util.js';
 
 export interface SecretMeta {
   name: string;
@@ -27,6 +29,13 @@ export interface SecretMeta {
   /** Field definition used to re-ask the person on rotation (never the value). */
   field?: { label: string; kind: string; help?: string; pattern?: string };
   source?: string;
+  /** 'vault' when a keychain destination fell back to Veil's encrypted store (no value) */
+  backend?: 'vault';
+}
+
+export interface PutOptions {
+  /** the person accepted Veil's encrypted store on the local page (fallback: ask) */
+  allowFallback?: boolean;
 }
 
 export interface MetaInput {
@@ -51,6 +60,9 @@ export interface VaultDeps {
   sensitive: SensitiveRegistry;
   keychainBackend?: KeychainBackend;
   now?: () => Date;
+  /** session agent socket for the local encrypted store */
+  agentSocket?: string;
+  testKdf?: boolean;
 }
 
 /**
@@ -65,11 +77,47 @@ export class Vault {
   private readonly mutex = new KeyedMutex();
   private readonly now: () => Date;
   readonly keychain: KeychainBackend;
+  /** Veil's own encrypted store at localVault.path (fallback for keychain destinations). */
+  readonly localVault: LocalVault;
+  private readonly localVaults = new Map<string, LocalVault>();
 
   constructor(private readonly d: VaultDeps) {
     this.now = d.now ?? (() => new Date());
     this.keychain = d.keychainBackend ?? defaultKeychainBackend(d.runner);
+    this.localVault = this.vaultAt(localVaultPath(d.cfg, d.paths));
     for (const [id, dc] of Object.entries(d.cfg.destinations)) this.stores.set(id, this.build(id, dc));
+  }
+
+  /** One LocalVault per file (a master-password encrypted-file destination may use its own path). */
+  vaultAt(file: string): LocalVault {
+    const abs = path.resolve(file);
+    let v = this.localVaults.get(abs);
+    if (!v) {
+      const lv = this.d.cfg.localVault;
+      v = new LocalVault({ file: abs, home: this.d.paths.home, keychain: this.keychain, keychainEntry: lv.keychain, agentSocket: this.d.agentSocket, unlockMinutes: lv.unlockMinutes, kdf: lv.kdf, testKdf: this.d.testKdf, maxAttempts: lv.maxAttempts });
+      this.localVaults.set(abs, v);
+    }
+    return v;
+  }
+
+  /** LocalVaults a set of destinations may need (keychain fallback or master-password stores). */
+  vaultsFor(destinations: string[]): LocalVault[] {
+    const out = new Set<LocalVault>();
+    for (const id of destinations) {
+      const dc = this.d.cfg.destinations[id];
+      if (dc?.type === 'keychain' && dc.fallback !== 'never') out.add(this.localVault);
+      if (dc?.type === 'encrypted-file' && dc.key.source === 'master') out.add(this.vaultAt(expandHome(dc.path)));
+    }
+    return [...out];
+  }
+
+  lockLocalVaults(): void {
+    for (const v of this.localVaults.values()) v.lock();
+  }
+
+  /** Entry name inside the shared local vault for a keychain destination that fell back. */
+  private fallbackName(destination: string, name: string): string {
+    return `${destination}:${name}`;
   }
 
   private build(id: string, dc: Config['destinations'][string]): SecretStore {
@@ -78,6 +126,7 @@ export class Vault {
         return new KeychainStore(id, dc.service, this.keychain);
       case 'encrypted-file': {
         const key = dc.key;
+        if (key.source === 'master') return this.vaultAt(expandHome(dc.path)).storeFor(id);
         return new EncryptedFileStore(id, dc.path, async () => {
           if (key.source === 'env') {
             const p = process.env[key.env];
@@ -106,7 +155,7 @@ export class Vault {
 
   store(id: string): SecretStore {
     const s = this.stores.get(id);
-    if (!s) throw new UserError(`destination "${id}" is not configured (allowlist)`, 'destination_not_allowed');
+    if (!s) throw new UserError(`destination "${id}" is not configured (allowlist)`, 'destination_not_configured');
     return s;
   }
 
@@ -160,11 +209,25 @@ export class Vault {
 
   // ------------------------------------------------------------ values
 
-  async put(destination: string, name: string, value: string, meta: MetaInput = {}): Promise<{ action: 'created' | 'updated' }> {
+  async put(destination: string, name: string, value: string, meta: MetaInput = {}, opts: PutOptions = {}): Promise<{ action: 'created' | 'updated'; fallback?: 'vault' }> {
     assertName(name, 'secret name');
     const store = this.store(destination);
     this.d.sensitive.add(name, value);
-    const res = await store.put(name, value);
+    const dc = this.d.cfg.destinations[destination];
+    let backend: 'vault' | undefined;
+    let res: { action: 'created' | 'updated' };
+    try {
+      res = await store.put(name, value);
+    } catch (e) {
+      if (!(dc?.type === 'keychain' && isKeychainFailure(e))) throw e;
+      if (dc.fallback === 'never' || (dc.fallback === 'ask' && !opts.allowFallback)) throw e;
+      res = await this.localVault.storeFor(destination).put(this.fallbackName(destination, name), value);
+      backend = 'vault';
+    }
+    if (!backend && dc?.type === 'keychain' && this.findMeta(`${destination}:${name}`)?.backend === 'vault') {
+      // the keychain works again: drop the old copy from the encrypted store when it is unlocked
+      await this.localVault.storeFor(destination).delete(this.fallbackName(destination, name)).catch(() => false);
+    }
     this.cache.delete(`${destination}:${name}`);
     const ts = this.now().toISOString();
     await this.updateIndex((ix) => {
@@ -183,9 +246,16 @@ export class Vault {
         project: meta.project ?? prev?.project,
         field: meta.field ?? prev?.field,
         source: meta.source ?? prev?.source,
+        ...(backend ? { backend } : {}),
       };
     });
-    return res;
+    return backend ? { ...res, fallback: backend } : res;
+  }
+
+  /** Reads a value from where it physically lives (keychain or its encrypted-store fallback). */
+  private readValue(meta: SecretMeta): Promise<string | undefined> {
+    if (meta.backend === 'vault') return this.localVault.storeFor(meta.destination).get(this.fallbackName(meta.destination, meta.name));
+    return this.store(meta.destination).get(meta.name);
   }
 
   /** Resolves a secret value at the moment of use. Throws UserError (no value) on failure. */
@@ -205,7 +275,7 @@ export class Vault {
     else {
       const store = this.store(meta.destination);
       if (!store.readable) throw new UserError(`secret "${meta.name}" lives in write-only destination ${meta.destination}`, 'not_readable');
-      value = await store.get(meta.name);
+      value = await this.readValue(meta);
       if (value === undefined) throw new UserError(`secret "${meta.name}" is indexed but missing from ${meta.destination}`, 'missing_value');
       if (this.d.cfg.cacheTtlSeconds > 0) this.cache.set(key, { value, expires: now + this.d.cfg.cacheTtlSeconds * 1000 });
     }
@@ -227,7 +297,8 @@ export class Vault {
   async readForBackup(destination: string, name: string): Promise<string | undefined> {
     const store = this.store(destination);
     if (!store.readable) return undefined;
-    const v = await store.get(name);
+    const meta = this.loadIndex().secrets[`${destination}:${name}`];
+    const v = meta ? await this.readValue(meta) : await store.get(name);
     if (v !== undefined) this.d.sensitive.add(name, v);
     return v;
   }
@@ -255,7 +326,8 @@ export class Vault {
     const deleted: string[] = [];
     for (const k of keys) {
       const m = ix.secrets[k]!;
-      await this.store(m.destination).delete(m.name);
+      if (m.backend === 'vault') await this.localVault.storeFor(m.destination).delete(this.fallbackName(m.destination, m.name));
+      else await this.store(m.destination).delete(m.name);
       this.cache.delete(k);
       deleted.push(m.destination);
     }

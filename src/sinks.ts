@@ -9,7 +9,7 @@ import { checkTargetAllowed, describeTarget, TargetSchema, type TargetWriter } f
 import { fieldRefsDeep, renderJson, renderString, secretRefsDeep, showTemplate, stringify, typedValue, valuesToJson } from './templates.js';
 import { jsonPointer } from './stores/http-api.js';
 import { sha256Hex, UserError } from './util.js';
-import type { Vault, MetaInput } from './vault.js';
+import type { Vault, MetaInput, PutOptions } from './vault.js';
 
 /** Where blind_input values go. The model describes the sink; values never return. */
 export const SinkSchema = z.discriminatedUnion('type', [
@@ -65,6 +65,8 @@ export interface SinkResult {
   http_statuses?: number[];
   dry_run?: boolean;
   rows_validated?: number;
+  /** names stored in Veil's encrypted store because the OS keychain was not available */
+  stored_in_local_vault?: string[];
 }
 
 export interface SinkDeps {
@@ -83,7 +85,7 @@ export interface SinkPlan {
   lines: { label: string; value: string }[];
   /** true when the person must explicitly confirm (unless remembered). */
   requiresApproval: boolean;
-  execute(values: Values, requestId: string, meta: MetaInput): Promise<SinkResult>;
+  execute(values: Values, requestId: string, meta: MetaInput, opts?: PutOptions): Promise<SinkResult>;
 }
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
@@ -148,16 +150,20 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
           { label: 'names', value: scalar.map(nameOf).join(', ') },
         ],
         requiresApproval: false,
-        async execute(values, _req, meta) {
+        async execute(values, _req, meta, opts) {
           const stored: string[] = [];
+          const fallback = new Set<string>();
           for (const f of scalar) {
             const v = values[f.name];
             if (v === null || v === undefined || v === '') continue;
             const value = typeof v === 'object' && v && 'amount' in v ? String((v as { amount: string }).amount) : stringify(v);
-            for (const dest of dests) await d.vault.put(dest, nameOf(f), value, { ...meta, field: { label: f.label, kind: f.kind, help: f.help, pattern: f.pattern } });
+            for (const dest of dests) {
+              const r = await d.vault.put(dest, nameOf(f), value, { ...meta, field: { label: f.label, kind: f.kind, help: f.help, pattern: f.pattern } }, opts);
+              if (r.fallback) fallback.add(nameOf(f));
+            }
             stored.push(nameOf(f));
           }
-          return { stored };
+          return fallback.size ? { stored, stored_in_local_vault: [...fallback] } : { stored };
         },
       };
     }

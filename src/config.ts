@@ -16,6 +16,13 @@ const SecretRef = z.string().describe('"name" or "destination:name" of a stored 
 const KeychainDest = z.object({
   type: z.literal('keychain'),
   service: z.string().default('veilform'),
+  /**
+   * When the OS keychain is missing/locked/unsupported:
+   *  - ask: the local page OFFERS Veil's encrypted store (master password typed there)
+   *  - auto: use the encrypted store automatically (still asks the master password on first use)
+   *  - never: fail with an actionable error
+   */
+  fallback: z.enum(['ask', 'auto', 'never']).default('ask'),
 });
 
 const EncryptedFileDest = z.object({
@@ -25,6 +32,8 @@ const EncryptedFileDest = z.object({
     .discriminatedUnion('source', [
       z.object({ source: z.literal('keychain'), service: z.string().default('veilform'), account: z.string().default('encrypted-file-key') }),
       z.object({ source: z.literal('env'), env: z.string().default('VEILFORM_PASSPHRASE') }),
+      /** Veil's own store: master password defined/typed on the local page, unlocked in memory (see localVault). */
+      z.object({ source: z.literal('master') }),
     ])
     .default({ source: 'keychain', service: 'veilform', account: 'encrypted-file-key' }),
 });
@@ -130,7 +139,20 @@ export const ConfigSchema = z.object({
     .default({ lang: 'auto', openBrowser: true, ttlSeconds: 600, blockSeconds: 0 }),
   cacheTtlSeconds: z.number().int().min(0).max(3600).default(60),
   defaultDestination: z.string().default('local'),
-  destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: 'veilform' } }),
+  destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: 'veilform', fallback: 'ask' } }),
+  /** Veil's own single-file encrypted store (fallback when the OS keychain is not available). */
+  localVault: z
+    .object({
+      /** default: <veilform home>/local-vault.json */
+      path: z.string().optional(),
+      /** minutes the derived key stays unlocked (session agent or this process) */
+      unlockMinutes: z.number().int().min(0).max(480).default(15),
+      kdf: z.enum(['argon2id', 'scrypt']).optional(),
+      /** where the derived key is saved when the person opts in (veilform unlock --save-keychain) */
+      keychain: z.object({ service: z.string().default('veilform'), account: z.string().default('local-vault-key') }).default({ service: 'veilform', account: 'local-vault-key' }),
+      maxAttempts: z.number().int().min(1).max(100).default(5),
+    })
+    .default({ unlockMinutes: 15, keychain: { service: 'veilform', account: 'local-vault-key' }, maxAttempts: 5 }),
   ssh: z
     .object({
       binary: z.string().default('ssh'),
@@ -221,6 +243,10 @@ export interface Paths {
   indexFile: string;
   approvalsFile: string;
   dataDir: string;
+}
+
+export function localVaultPath(cfg: Config, paths: Paths): string {
+  return expandHome(cfg.localVault.path ?? path.join(paths.home, 'local-vault.json'));
 }
 
 export function resolvePaths(env: NodeJS.ProcessEnv = process.env): Paths {
