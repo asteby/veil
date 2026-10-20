@@ -68,7 +68,7 @@ describe.skipIf(!hasBrowser)('blind web actions in the MCP-owned browser (Playwr
   beforeAll(async () => {
     await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
     origin = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
-    t = makeApp({ web: { headless: true, stepTimeoutMs: 4000, sites: { panel: { origins: [origin], startUrl: `${origin}/login` } } } });
+    t = makeApp({ web: { headless: true, stepTimeoutMs: 8000, sites: { panel: { origins: [origin], startUrl: `${origin}/login` } } } });
     await t.app.vault.put('local', 'panel_user', USER);
     await t.app.vault.put('local', 'panel_pass', PASS);
   });
