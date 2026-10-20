@@ -14,7 +14,9 @@ import { SshKeys } from './sshkeys.js';
 import type { KeychainBackend } from './stores/keychain.js';
 import { checkTargetAllowed, describeTarget, TargetSchema, TargetWriter, type Target } from './targets.js';
 import { secretRefs, secretRefsDeep } from './templates.js';
-import { UiServer, type PageSpec, type SubmitPayload, type SubmitResult } from './ui/server.js';
+import { UiServer, type FallbackOffer, type PageFix, type PageSpec, type SubmitPayload, type SubmitResult } from './ui/server.js';
+import { fixOf, isKeychainFailure } from './errors.js';
+import { MIN_MASTER_LENGTH, type LocalVault } from './localvault.js';
 import { STRINGS, type Lang } from './ui/i18n.js';
 import { fingerprint, log, newId, UserError } from './util.js';
 import { Vault, type MetaInput } from './vault.js';
@@ -80,6 +82,8 @@ export const Inputs = {
     dry_run: z.boolean().optional(),
   }),
   secret_wait: z.object({ id: z.string(), timeout_seconds: z.number().int().min(0).max(600).optional() }),
+  doctor: z.object({}),
+  local_unlock: z.object({ minutes: z.number().int().min(1).max(480).optional().describe('how long it stays unlocked (default localVault.unlockMinutes)') }),
   web_capture: z.object({
     site: z.string(),
     url: z.string().optional(),
@@ -163,6 +167,8 @@ export class App {
   readonly envFiles: EnvFiles;
   readonly tools: VaultTools;
   readonly session = newId('sess');
+  /** session agent socket (undefined = disabled) */
+  readonly agentSocket?: string;
   elicitor?: Elicitor;
   private readonly openUrl: (url: string) => Promise<boolean>;
 
@@ -174,7 +180,8 @@ export class App {
     this.approvals = new Approvals(this.paths.approvalsFile);
     this.ui = new UiServer({ lang: this.cfg.ui.lang });
     this.ssh = new Ssh(this.cfg, this.runner, path.join(this.paths.home, 'known_hosts'));
-    this.vault = new Vault({ cfg: this.cfg, paths: this.paths, runner: this.runner, ssh: this.ssh, sensitive: this.sensitive, keychainBackend: deps.keychainBackend });
+    this.agentSocket = deps.agentSocket === null ? undefined : (deps.agentSocket ?? agentSocketPath(this.paths.home));
+    this.vault = new Vault({ cfg: this.cfg, paths: this.paths, runner: this.runner, ssh: this.ssh, sensitive: this.sensitive, keychainBackend: deps.keychainBackend, agentSocket: this.agentSocket, testKdf: deps.testKdf });
     this.keys = new SshKeys(this.cfg, this.vault, this.ssh, this.runner, this.paths.home);
     this.ssh.keys = this.keys;
     this.writer = new TargetWriter(this.cfg, this.ssh, this.runner);
@@ -189,7 +196,7 @@ export class App {
       keyFiles: this.cfg.env.keyFiles,
       kdf: this.cfg.env.kdf,
       maxAttempts: this.cfg.env.maxAttempts,
-      agentSocket: deps.agentSocket === null ? undefined : (deps.agentSocket ?? agentSocketPath(this.paths.home)),
+      agentSocket: this.agentSocket,
       testKdf: deps.testKdf,
     });
     this.tools = new VaultTools(this);
@@ -197,6 +204,7 @@ export class App {
 
   async shutdown(): Promise<void> {
     this.vault.clearCache();
+    this.vault.lockLocalVaults();
     this.sync.lock();
     this.envFiles.lock();
     this.sensitive.clear();
@@ -304,19 +312,38 @@ export class App {
       for (const s of flattenStrings(values, undefined, 8)) this.sensitive.add(s.label, s.value);
       if (errors.length) return { ok: false, errors };
       if (needsConfirm && !p.confirm) return { ok: false, errors: [{ field: '__confirm', code: 'confirm' }] };
+      const dests = args.sink.type === 'store' ? ((args.sink.plan.destinations as string[] | undefined) ?? []) : [];
+      let allowFallback = false;
+      if (p.fallback && dests.length) {
+        // master password for Veil's encrypted store, typed on THIS page: registered first so it can never be echoed
+        const pass = typeof p.fallback.passphrase === 'string' ? p.fallback.passphrase : '';
+        const pass2 = typeof p.fallback.passphrase2 === 'string' ? p.fallback.passphrase2 : undefined;
+        if (pass) this.sensitive.add('master_password', pass);
+        if (pass2) this.sensitive.add('master_password', pass2);
+        const opened = await this.openLocalVaults(this.vault.vaultsFor(dests), pass, pass2, op.id, 'page');
+        if (opened) return opened;
+        allowFallback = true;
+      }
       this.ops.setStatus(op.id, 'running');
       try {
-        const res = await args.sink.execute(values, op.id, args.meta);
+        const res = await args.sink.execute(values, op.id, args.meta, { allowFallback });
         if (needsConfirm && p.remember) await this.approvals.remember(fp, `sink:${args.sink.type}`, JSON.stringify(args.sink.plan).slice(0, 300));
         const failed = Boolean(res.field_errors?.length) && !res.rows_written && !res.stored?.length;
         this.ops.finish(op.id, failed ? 'failed' : 'completed', { ...res });
-        this.audit.write(failed ? 'input_failed' : 'input_stored', { op: op.id, sink: args.sink.type, sink_fingerprint: fp, stored: res.stored, rows_written: res.rows_written, errors: res.field_errors?.map((e) => e.code) });
-        return failed ? { ok: false, message: `${t.err_type} (${res.field_errors!.map((e) => e.code).join(', ')})` } : { ok: true, message: t.saved };
+        this.audit.write(failed ? 'input_failed' : 'input_stored', { op: op.id, sink: args.sink.type, sink_fingerprint: fp, stored: res.stored, stored_in_local_vault: res.stored_in_local_vault, rows_written: res.rows_written, errors: res.field_errors?.map((e) => e.code) });
+        return failed ? { ok: false, message: `${t.err_type} (${res.field_errors!.map((e) => e.code).join(', ')})` } : { ok: true, message: res.stored_in_local_vault?.length ? `${t.savedLocalVault} ${t.saved}` : t.saved };
       } catch (e) {
         const code = e instanceof UserError ? e.code : 'sink_failed';
-        this.ops.finish(op.id, 'failed', { error: code, message: e instanceof UserError ? this.sensitive.scrub(e.message) : 'destination failed' });
+        const offer = dests.length ? await this.fallbackOffer(e, dests, lang) : undefined;
+        if (offer) {
+          // keep the page open and OFFER Veil's encrypted store instead of failing
+          this.ops.setStatus(op.id, 'awaiting_user');
+          this.audit.write('local_vault_offered', { op: op.id, reason: code, mode: offer.mode });
+          return { ok: false, fallback: offer, message: offer.problem };
+        }
+        this.ops.finish(op.id, 'failed', { error: code, message: e instanceof UserError ? this.sensitive.scrub(e.message) : 'destination failed', ...fixOf(e) });
         this.audit.write('input_failed', { op: op.id, sink: args.sink.type, error: code });
-        return { ok: false, message: `Error: ${code}` };
+        return { ok: false, message: pageHelp(e, lang) ?? `Error: ${code}`, fix: pageFix(e, lang) };
       }
     };
     const { url } = await this.register(op, {
@@ -380,7 +407,125 @@ export class App {
     const schema = normalizeSchema({ fields: a.fields.map((f) => ({ ...f, required: f.required ?? true })) as FieldDef[] });
     const sink = planSink({ type: 'store', destination: a.destination }, schema, this.sinkDeps());
     const r = await this.formOperation('secret_request', { title: a.title, description: a.description, schema, sink, meta: this.metaFrom(a.metadata) });
-    return { request_id: r.request_id, status: r.status, stored: r.stored ?? [], ...(r.url ? { url: r.url, browser_opened: r.browser_opened, next: r.next } : {}), ...(r.error ? { error: r.error } : {}) };
+    return {
+      request_id: r.request_id,
+      status: r.status,
+      stored: r.stored ?? [],
+      ...(r.stored_in_local_vault ? { stored_in_local_vault: r.stored_in_local_vault } : {}),
+      ...(r.url ? { url: r.url, browser_opened: r.browser_opened, next: r.next } : {}),
+      ...(r.error ? { error: r.error, ...(r.help ? { help: r.help } : {}), ...(r.fix ? { fix: r.fix } : {}) } : {}),
+    };
+  }
+
+  /** Creates (first use) or unlocks Veil's encrypted store(s) with a password typed on a local page. */
+  private async openLocalVaults(vaults: LocalVault[], pass: string, pass2: string | undefined, opId: string, via: string): Promise<SubmitResult | undefined> {
+    if (!vaults.length) return undefined;
+    if (!pass) {
+      // consent only: allowed when every store involved is already unlocked
+      const st = await Promise.all(vaults.map((v) => v.status()));
+      return st.every((x) => x.unlocked) ? undefined : { ok: false, errors: [{ field: '__fallback', code: 'required' }] };
+    }
+    for (const v of vaults) {
+      try {
+        if (!v.exists()) {
+          if (pass.length < MIN_MASTER_LENGTH) return { ok: false, errors: [{ field: '__fallback', code: 'weak' }] };
+          if (pass2 !== pass) return { ok: false, errors: [{ field: '__fallback', code: 'mismatch' }] };
+          const r = await v.create(pass);
+          this.audit.write('local_vault_created', { op: opId, via, kdf: r.kdf, cached: r.cached });
+        } else {
+          const r = await v.unlock(pass);
+          this.audit.write('local_vault_unlocked', { op: opId, via, cached: r.cached, minutes: this.cfg.localVault.unlockMinutes });
+        }
+      } catch (e) {
+        const code = e instanceof UserError ? e.code : 'internal';
+        this.audit.write('local_vault_unlock_failed', { op: opId, via, error: code });
+        if (code === 'wrong_key') return { ok: false, errors: [{ field: '__fallback', code: 'wrong' }] };
+        if (code === 'too_many_attempts') return { ok: false, errors: [{ field: '__fallback', code: 'locked' }] };
+        if (code === 'weak_passphrase') return { ok: false, errors: [{ field: '__fallback', code: 'weak' }] };
+        throw e;
+      }
+    }
+    return undefined;
+  }
+
+  /** When a store write failed because of the keychain (or a locked local store), what to offer on the page. */
+  private async fallbackOffer(e: unknown, dests: string[], lang: Lang): Promise<FallbackOffer | undefined> {
+    if (!(e instanceof UserError)) return undefined;
+    if (!(isKeychainFailure(e) || e.code === 'passphrase_required' || e.code === 'master_password_not_set')) return undefined;
+    const vaults = this.vault.vaultsFor(dests);
+    if (!vaults.length) return undefined;
+    const help = fixOf(e);
+    return {
+      reason: e.code,
+      mode: vaults.some((v) => !v.exists()) ? 'create' : (await Promise.all(vaults.map((v) => v.status()))).every((st) => st.unlocked) ? 'confirm' : 'unlock',
+      problem: help.help?.[lang] ?? e.code,
+      fix: isKeychainFailure(e) && help.fix ? { text: help.fix[lang], command: help.fix.command } : undefined,
+      minLength: MIN_MASTER_LENGTH,
+      unlockMinutes: this.cfg.localVault.unlockMinutes,
+      path: vaults[0]!.file,
+    };
+  }
+
+  /** Read-only diagnosis (no secrets, nothing privileged). */
+  async doctor(): Promise<SafeResult> {
+    const { runDoctor } = await import('./doctor.js');
+    const { VERSION } = await import('./version.js');
+    const r = await runDoctor({ paths: this.paths, version: VERSION, runner: this.runner, localVault: await this.vault.localVault.status() });
+    return r as unknown as SafeResult;
+  }
+
+  /** Opens a local page to create (first use) or unlock Veil's encrypted store. Never through the chat. */
+  async localUnlock(raw: unknown): Promise<SafeResult> {
+    const a = Inputs.local_unlock.parse(raw ?? {});
+    const v = this.vault.localVault;
+    const st = await v.status();
+    if (st.unlocked) return { status: 'unlocked', via: st.via, path: st.path };
+    const create = !st.exists;
+    const es = serverLang(this.cfg.ui.lang) === 'es';
+    const fields: FieldDef[] = [
+      { name: 'master_password', label: es ? 'Contraseña maestra' : 'Master password', kind: 'secret', required: true, help: create ? (es ? `Al menos ${MIN_MASTER_LENGTH} caracteres. Si la olvidas, nadie puede recuperar los valores guardados con ella: guarda una copia en tu gestor de contraseñas o en papel y respalda el archivo cifrado.` : `At least ${MIN_MASTER_LENGTH} characters. If you forget it nobody can recover the values stored with it: keep a copy in your password manager or on paper and back up the encrypted file.`) : undefined },
+    ];
+    if (create) {
+      fields.push({ name: 'master_password2', label: es ? 'Repite la contraseña maestra' : 'Repeat the master password', kind: 'secret', required: true });
+      fields.push({ name: 'ack', label: es ? 'Entiendo, y guardo una copia de la contraseña maestra en un lugar seguro' : 'I understand, and I keep a copy of the master password somewhere safe', kind: 'boolean', required: true });
+    }
+    const schema = normalizeSchema({ fields });
+    const op = this.ops.create('local_unlock', 'unl');
+    const minutes = a.minutes ?? this.cfg.localVault.unlockMinutes;
+    this.audit.write('local_unlock_requested', { op: op.id, create });
+    const { url } = await this.register(op, {
+      kind: 'form',
+      title: create ? (es ? 'Crear el almacén cifrado de Veil' : "Create Veil's encrypted store") : es ? 'Desbloquear el almacén cifrado de Veil' : "Unlock Veil's encrypted store",
+      description: create
+        ? es
+          ? 'Define la contraseña maestra del almacén cifrado propio de Veil (un archivo, AES-256-GCM). El agente de IA nunca la ve.'
+          : "Define the master password of Veil's own encrypted store (one file, AES-256-GCM). The AI agent never sees it."
+        : es
+          ? `Escribe la contraseña maestra. Quedará desbloqueado en memoria ${minutes} minutos.`
+          : `Type the master password. It stays unlocked in memory for ${minutes} minutes.`,
+      schema,
+      destination: { lines: [{ label: es ? 'archivo' : 'file', value: v.file }], needsConfirm: false, rememberable: false },
+      submitLabel: create ? (es ? 'Crear' : 'Create') : es ? 'Desbloquear' : 'Unlock',
+      handle: async (p, lang) => {
+        const t = STRINGS[lang];
+        if (p.action === 'cancel') {
+          this.ops.finish(op.id, 'cancelled');
+          return { ok: false, message: t.cancelled };
+        }
+        const { values, errors } = validateValues(schema, p.values ?? {});
+        const pass = typeof values.master_password === 'string' ? values.master_password : '';
+        const pass2 = typeof values.master_password2 === 'string' ? values.master_password2 : undefined;
+        if (pass) this.sensitive.add('master_password', pass);
+        if (pass2) this.sensitive.add('master_password', pass2);
+        if (errors.length) return { ok: false, errors };
+        const r = await this.openLocalVaults([v], pass, pass2, op.id, 'local_unlock');
+        if (r && !r.ok) return { ok: false, errors: (r.errors ?? []).map((e) => ({ field: e.code === 'mismatch' ? 'master_password2' : 'master_password', code: e.code === 'weak' ? 'min_length' : e.code === 'mismatch' ? 'pattern' : e.code === 'wrong' ? 'type' : e.code })) };
+        const after = await v.status();
+        this.ops.finish(op.id, 'completed', { unlocked: after.unlocked, created: create, via: after.via, minutes });
+        return { ok: true, message: t.done };
+      },
+    });
+    return this.present(op, url, create ? "Waiting for the person to define the master password of Veil's encrypted store." : "Waiting for the person to unlock Veil's encrypted store.");
   }
 
   secretList(raw: unknown): SafeResult {
@@ -499,7 +644,7 @@ export class App {
   }
 
   errorResult(e: unknown): SafeResult {
-    if (e instanceof UserError) return { error: e.code, message: this.sensitive.scrub(e.message) };
+    if (e instanceof UserError) return { error: e.code, message: this.sensitive.scrub(e.message), ...fixOf(e) };
     return { error: 'internal', message: 'internal error (details withheld)' };
   }
 
@@ -835,4 +980,20 @@ export class App {
       },
     );
   }
+}
+
+function pageHelp(e: unknown, lang: Lang): string | undefined {
+  return fixOf(e).help?.[lang];
+}
+
+function pageFix(e: unknown, lang: Lang): PageFix | undefined {
+  const f = fixOf(e).fix;
+  if (!f) return undefined;
+  return { text: f[lang], command: f.command, ...(f.alternative ? { alternative: { text: f.alternative[lang], command: f.alternative.command } } : {}) };
+}
+
+/** Language for server-built page labels: config, else the process locale. */
+export function serverLang(configured: 'auto' | Lang, env: NodeJS.ProcessEnv = process.env): Lang {
+  if (configured !== 'auto') return configured;
+  return /^es/i.test(env.VEILFORM_LANG ?? env.LC_ALL ?? env.LC_MESSAGES ?? env.LANG ?? '') ? 'es' : 'en';
 }

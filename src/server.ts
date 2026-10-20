@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { App, Inputs } from './app.js';
 import { VaultInputs } from './vaulttools.js';
 import type { SafeResult } from './ops.js';
+import { fixOf } from './errors.js';
 import { log, UserError } from './util.js';
+import { VERSION } from './version.js';
 
-export const VERSION = '0.1.0';
+export { VERSION };
 
 const SECURITY_NOTE =
   'You will NEVER receive secret values: only names, statuses, counts, ids and fingerprints. Do not ask the person to paste secrets in chat; use these tools instead. Do not try to read the stores, the .env files written by this server, or the veilform directory with other tools.';
@@ -54,7 +56,10 @@ export function createServer(app: App): McpServer {
       return { content: [{ type: 'text' as const, text: app.safe(result) }] };
     } catch (e) {
       let message: string;
-      if (e instanceof UserError) message = `${e.code}: ${e.message}`;
+      if (e instanceof UserError) {
+        // structured, value-free: code + what happened + fix (text and exact command), en/es
+        return { isError: true, content: [{ type: 'text' as const, text: app.safe({ error: `${e.code}: ${e.message}`, code: e.code, ...fixOf(e) }) }] };
+      }
       else if (e instanceof z.ZodError) message = `invalid_args: ${e.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.code}`).join('; ')}`;
       else {
         message = 'internal error (details withheld to protect values)';
@@ -202,6 +207,29 @@ export function createServer(app: App): McpServer {
       inputSchema: Inputs.ssh_exec,
     },
     wrap('ssh_exec', (a) => app.sshExec(a)),
+  );
+
+  server.registerTool(
+    'doctor',
+    {
+      title: 'Diagnose what Veil needs on this machine',
+      description:
+        'Read-only diagnosis: Node/crypto (argon2id), OS keychain backend (secret-tool + D-Bus + Secret Service lock state on Linux, security on macOS, Windows plan), the default destination and Veil\'s encrypted store, session agent, permissions of the veilform directory and optional tools (ssh, git, gh, psql, Chromium). Each problem has impact and the exact fix command for the detected distribution (apt/dnf/pacman/zypper/brew). Runs nothing privileged, needs no secret. Show the fix commands to the person; never run sudo yourself.',
+      inputSchema: Inputs.doctor,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    wrap('doctor', () => app.doctor()),
+  );
+
+  server.registerTool(
+    'local_unlock',
+    {
+      title: "Create or unlock Veil's encrypted store",
+      description: `Opens a LOCAL page where the person defines (first use) or types the master password of Veil's own encrypted store (used when the OS keychain is unavailable). The password never passes through you. It stays unlocked in memory for N minutes (session agent when running). Returns {status, unlocked, created, via}. Use it when another tool answers passphrase_required. ${SECURITY_NOTE}`,
+      inputSchema: Inputs.local_unlock,
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    wrap('local_unlock', (a) => app.localUnlock(a)),
   );
 
   const reg = (name: string, title: string, description: string, input: z.ZodObject, fn: Handler, annotations?: Record<string, boolean>) =>
