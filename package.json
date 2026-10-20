@@ -1,16 +1,27 @@
 {
-  "name": "veilform",
-  "version": "0.1.0",
-  "description": "MCP server that lets an AI agent request, store and use credentials without ever seeing their values.",
+  "name": "@asteby/veil",
+  "version": "0.2.0",
+  "description": "Veil: an MCP server that lets an AI agent request, store and use credentials without ever seeing their values.",
   "license": "MIT",
+  "author": "asteby",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asteby/veil.git"
+  },
+  "homepage": "https://github.com/asteby/veil#readme",
+  "bugs": {
+    "url": "https://github.com/asteby/veil/issues"
+  },
   "type": "module",
   "bin": {
+    "veil": "dist/cli.js",
     "veilform": "dist/cli.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
+    "scripts/postinstall.mjs",
     "README.md",
     "README.es.md",
     "THREAT-MODEL.md",
@@ -22,13 +33,19 @@
   "engines": {
     "node": ">=20.11"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",
     "secrets",
     "credentials",
     "ai-agent",
-    "security"
+    "security",
+    "vault",
+    "dotenv",
+    "encryption"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -36,7 +53,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

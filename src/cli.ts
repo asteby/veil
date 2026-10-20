@@ -4,6 +4,16 @@ import { App } from './app.js';
 import { verifyAuditLog } from './audit.js';
 import { resolvePaths, loadConfig } from './config.js';
 import { createServer, VERSION } from './server.js';
+import { runVaultCli, VAULT_HELP } from './cli-vault.js';
+import { runSetupCli, SETUP_HELP } from './cli-setup.js';
+
+const CORE_HELP = `veil ${VERSION} — MCP server: ask for, store and use secrets without the AI agent seeing them
+("veilform" is kept as an alias of this command)
+
+  (no command) | serve                        MCP server on stdio (claude mcp add veil -- veil)
+  check-config                                which config/destinations are loaded
+  verify-audit                                check the hash chain of the audit log
+  --version | help`;
 
 async function main(): Promise<void> {
   const arg = process.argv[2];
@@ -29,6 +39,25 @@ async function main(): Promise<void> {
     process.exitCode = bad ? 1 : 0;
     return;
   }
+  if (arg === 'help' || arg === '--help' || arg === '-h') {
+    process.stdout.write(`${CORE_HELP}\n\nSetup:\n${SETUP_HELP}\n\n${VAULT_HELP}\n`);
+    return;
+  }
+  const setup = await runSetupCli(process.argv.slice(2), () => new App());
+  if (setup !== undefined) {
+    process.exitCode = setup;
+    return;
+  }
+  const code = await runVaultCli(process.argv.slice(2), () => new App());
+  if (code !== undefined) {
+    process.exitCode = code;
+    return;
+  }
+  if (arg && arg !== 'serve') {
+    process.stderr.write(`unknown command ${arg}; try "veil help"\n`);
+    process.exitCode = 2;
+    return;
+  }
   const app = new App();
   const server = createServer(app);
   const transport = new StdioServerTransport();
@@ -51,6 +80,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  console.error(`[veilform] fatal: ${e instanceof Error && e.name === 'UserError' ? e.message : 'startup failed'}`);
+  console.error(`[veil] fatal: ${e instanceof Error && e.name === 'UserError' ? e.message : 'startup failed'}`);
   process.exit(1);
 });

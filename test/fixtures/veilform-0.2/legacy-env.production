@@ -1,0 +1,7 @@
+#/veilform-env v1
+#/context .env.production
+#/recipient key:18d47f33c0002653 eyJ3IjoiTlBmTXdRWWhNbE43NnlSUlBmRFFOVU9WSmJMMnFyYkxSREI2bWhIZ041QXgtanRBVXYzajNxYUdXYkFMV1JmTHFuRjE0ZEJCZHlJcjZXUi0ifQ
+#/mac gHU6xueOGVDtxh0BEmCYyKZdn7VvQjOUbyqlCXZ7Wec
+# fixture
+export DB_URL="enc:v1:TZlFgkx3ZurReNA3VYQLsDfkZB1H6wcFIDKX542iEc4dr5ClpY9o3oZP_V67rMht"
+PORT="enc:v1:WZlqW3QhNopiVhEb-GQDQQgpI6X5QQggdQJe4m8Covg"

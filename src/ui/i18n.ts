@@ -1,8 +1,9 @@
 export type Lang = 'en' | 'es';
 
 const en = {
-  appName: 'veilform',
-  localNotice: 'Local page served by veilform on this computer. Check that the address bar shows http://127.0.0.1. The AI agent cannot see what you type here.',
+  appName: 'Veil',
+  noScript: 'JavaScript is required for this local page.',
+  localNotice: 'Local page served by Veil on this computer. Check that the address bar shows http://127.0.0.1. The AI agent cannot see what you type here.',
   requestId: 'Request',
   submit: 'Save securely',
   send: 'Send',
@@ -18,6 +19,8 @@ const en = {
   row: 'Row',
   rows: 'rows',
   importCsv: 'Import CSV file',
+  chooseFile: 'Choose file',
+  noFileChosen: 'No file chosen',
   pasteLabel: 'Paste rows from a spreadsheet (tab or comma separated, first line may be headers)',
   pasteButton: 'Import pasted rows',
   importedRows: 'Imported {n} rows.',
@@ -61,11 +64,43 @@ const en = {
   yes: 'Yes',
   no: 'No',
   verify: 'Verification code',
+  revealTitle: 'Only on this page',
+  hidesIn: 'Hidden again in {n} s. Nothing here reaches the AI agent.',
+  revealHidden: 'Values hidden. This single-use page cannot show them again.',
+  copiedShort: 'Copied',
+  copyFailed: 'Copy failed',
+  err_wrong: 'Wrong passphrase or token (attempts are limited).',
+  err_mismatch: 'The two passphrases do not match.',
+  err_weak: 'Too short.',
+  err_locked: 'Too many failed attempts. Try again later.',
+  err_gone: 'Not found: revoked, already consumed or never uploaded.',
+  err_expired: 'This share has expired.',
+  err_consumed: 'This share was already consumed.',
+  err_bad_token: 'This is not a veil share token.',
+  savedLocalVault: "Stored in Veil's encrypted store (the OS keychain was not available).",
+  fbTitle: 'The OS keychain could not be used',
+  fbFixLabel: 'To fix it for good:',
+  fbOfferCreate: "You can continue now without installing anything: Veil keeps these values in its own encrypted file (AES-256-GCM, key derived from a master password). Define the master password here; it never reaches the AI agent.",
+  fbOfferUnlock: "Continue with Veil's encrypted store: type its master password. It never reaches the AI agent.",
+  fbOfferConfirm: "Veil's encrypted store is unlocked. Save these values there instead?",
+  fbPass: 'Master password',
+  fbPass2: 'Repeat the master password',
+  fbPassHelp: 'At least {n} characters. A few random words work well.',
+  fbBackup: 'Important: if you forget this password, nobody can recover the values stored with it (not even Veil). Keep it in your password manager or on paper, and back up the encrypted file.',
+  fbAck: 'I understand, and I keep a copy of the master password somewhere safe',
+  fbUnlockFor: 'It stays unlocked in memory for {n} minutes ("veil lock" forgets it sooner).',
+  fbSubmit: 'Continue with the encrypted store',
+  fbFile: 'File',
+  fixTitle: 'How to fix it',
+  alternative: 'Alternative',
+  copyCmd: 'Copy command',
+  err_ack: 'Please confirm that you keep a copy of the master password.',
 };
 
 const es: typeof en = {
-  appName: 'veilform',
-  localNotice: 'Página local servida por veilform en esta computadora. Verifica que la barra de direcciones muestre http://127.0.0.1. El agente de IA no puede ver lo que escribas aquí.',
+  appName: 'Veil',
+  noScript: 'Esta página local necesita JavaScript.',
+  localNotice: 'Página local servida por Veil en esta computadora. Verifica que la barra de direcciones muestre http://127.0.0.1. El agente de IA no puede ver lo que escribas aquí.',
   requestId: 'Solicitud',
   submit: 'Guardar de forma segura',
   send: 'Enviar',
@@ -81,6 +116,8 @@ const es: typeof en = {
   row: 'Fila',
   rows: 'filas',
   importCsv: 'Importar archivo CSV',
+  chooseFile: 'Elegir archivo',
+  noFileChosen: 'Ningún archivo seleccionado',
   pasteLabel: 'Pega filas desde una hoja de cálculo (separadas por tabulador o coma; la primera línea puede ser de encabezados)',
   pasteButton: 'Importar filas pegadas',
   importedRows: 'Se importaron {n} filas.',
@@ -124,10 +161,54 @@ const es: typeof en = {
   yes: 'Sí',
   no: 'No',
   verify: 'Código de verificación',
+  revealTitle: 'Solo en esta página',
+  hidesIn: 'Se ocultará de nuevo en {n} s. Nada de esto llega al agente de IA.',
+  revealHidden: 'Valores ocultos. Esta página de un solo uso no puede volver a mostrarlos.',
+  copiedShort: 'Copiado',
+  copyFailed: 'No se pudo copiar',
+  err_wrong: 'Passphrase o token incorrecto (los intentos son limitados).',
+  err_mismatch: 'Las dos passphrases no coinciden.',
+  err_weak: 'Demasiado corta.',
+  err_locked: 'Demasiados intentos fallidos. Inténtalo más tarde.',
+  err_gone: 'No encontrado: revocado, ya consumido o nunca subido.',
+  err_expired: 'Esta compartición caducó.',
+  err_consumed: 'Esta compartición ya fue consumida.',
+  err_bad_token: 'Esto no es un token de compartir de Veil.',
+  savedLocalVault: 'Guardado en el almacén cifrado de Veil (el llavero del sistema no estaba disponible).',
+  fbTitle: 'No se pudo usar el llavero del sistema',
+  fbFixLabel: 'Para arreglarlo de forma permanente:',
+  fbOfferCreate: 'Puedes continuar ahora sin instalar nada: Veil guarda estos valores en su propio archivo cifrado (AES-256-GCM, llave derivada de una contraseña maestra). Define aquí la contraseña maestra; nunca llega al agente de IA.',
+  fbOfferUnlock: 'Continúa con el almacén cifrado de Veil: escribe su contraseña maestra. Nunca llega al agente de IA.',
+  fbOfferConfirm: 'El almacén cifrado de Veil está desbloqueado. ¿Guardar ahí estos valores?',
+  fbPass: 'Contraseña maestra',
+  fbPass2: 'Repite la contraseña maestra',
+  fbPassHelp: 'Al menos {n} caracteres. Unas cuantas palabras al azar funcionan bien.',
+  fbBackup: 'Importante: si olvidas esta contraseña, nadie puede recuperar los valores guardados con ella (ni siquiera Veil). Guárdala en tu gestor de contraseñas o en papel, y respalda el archivo cifrado.',
+  fbAck: 'Entiendo, y guardo una copia de la contraseña maestra en un lugar seguro',
+  fbUnlockFor: 'Queda desbloqueado en memoria {n} minutos ("veil lock" lo olvida antes).',
+  fbSubmit: 'Continuar con el almacén cifrado',
+  fbFile: 'Archivo',
+  fixTitle: 'Cómo arreglarlo',
+  alternative: 'Alternativa',
+  copyCmd: 'Copiar comando',
+  err_ack: 'Confirma que guardas una copia de la contraseña maestra.',
 };
 
 export const STRINGS: Record<Lang, typeof en> = { en, es };
 export type Strings = typeof en;
+
+/** Text built by the server for a page: a plain string (same in both languages) or one per language. */
+export type Txt = string | { en: string; es: string };
+
+export function tr(v: Txt, lang: Lang): string {
+  return typeof v === 'string' ? v : v[lang];
+}
+
+/** Language from the process locale (VEIL_LANG, then LC_ALL / LC_MESSAGES / LANG). */
+export function localeLang(env: NodeJS.ProcessEnv = process.env): Lang {
+  const l = env.VEIL_LANG ?? env.VEILFORM_LANG ?? env.LC_ALL ?? env.LC_MESSAGES ?? env.LANG ?? '';
+  return /^es/i.test(l) ? 'es' : 'en';
+}
 
 export function pickLang(configured: 'auto' | Lang, query: string | null, acceptLanguage: string | undefined): Lang {
   if (query === 'en' || query === 'es') return query;

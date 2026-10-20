@@ -3,49 +3,84 @@ import type { AddressInfo } from 'node:net';
 import type { NormalizedSchema, FieldError } from '../schema.js';
 import { log, newId, randomToken, safeEqual } from '../util.js';
 import { CLIENT_JS, CSS } from './assets.js';
-import { pickLang, STRINGS, type Lang, type Strings } from './i18n.js';
+import { pickLang, STRINGS, tr, type Lang, type Strings, type Txt } from './i18n.js';
 
 export type PageKind = 'form' | 'approval' | 'preview' | 'clipboard';
 
 export interface DestinationInfo {
-  lines: { label: string; value: string }[];
+  lines: { label: Txt; value: string }[];
   needsConfirm: boolean;
   rememberable: boolean;
 }
 
 export interface ApprovalInfo {
-  items: { label: string; value: string }[];
+  items: { label: Txt; value: string }[];
   literal?: string;
-  warnings?: string[];
+  warnings?: Txt[];
   rememberable: boolean;
-  approveLabel?: string;
+  approveLabel?: Txt;
   /** Lets the person adjust a JSON document (e.g. web steps) before approving. */
-  editable?: { label: string; value: string };
+  editable?: { label: Txt; value: string };
 }
 
 export interface SubmitPayload {
-  action: 'submit' | 'cancel' | 'approve' | 'deny';
+  /** 'reveal' = ask for values to be shown on THIS page only (never terminal). */
+  action: 'submit' | 'cancel' | 'approve' | 'deny' | 'reveal';
   values?: Record<string, unknown>;
   remember?: boolean;
   confirm?: boolean;
   edited?: string;
+  /** master password for Veil's encrypted store, typed on this page (create or unlock) */
+  fallback?: { passphrase?: string; passphrase2?: string };
+}
+
+/** Localized, value-free fix shown on the page. */
+export interface PageFix {
+  text: string;
+  command?: string;
+  alternative?: { text: string; command?: string };
+}
+
+/** The OS keychain failed: offer Veil's encrypted store right on the page. */
+export interface FallbackOffer {
+  reason: string;
+  /** create = define the master password now; unlock = type it; confirm = already unlocked, consent only */
+  mode: 'create' | 'unlock' | 'confirm';
+  problem: string;
+  fix?: PageFix;
+  minLength: number;
+  unlockMinutes: number;
+  path: string;
+}
+
+/** Values shown only on the local page, with copy buttons, hidden again after `hideAfter` seconds. */
+export interface RevealInfo {
+  items: { label: string; value: string }[];
+  hideAfter: number;
+  note?: string;
 }
 
 export type SubmitResult =
-  | { ok: true; message?: string; clipboard?: { value: string; clearAfter: number } }
-  | { ok: false; errors?: FieldError[]; message?: string };
+  | { ok: true; message?: string; clipboard?: { value: string; clearAfter: number }; reveal?: RevealInfo }
+  | { ok: false; errors?: FieldError[]; message?: string; fix?: PageFix; fallback?: FallbackOffer };
 
 export interface PageSpec {
   kind: PageKind;
   /** Operation id shown to the person so they can match it with the chat. */
   opId: string;
-  title: string;
-  description?: string;
-  schema?: NormalizedSchema;
+  /** server-built texts may be given per language ({en, es}); model-provided ones are plain strings */
+  title: Txt;
+  description?: Txt;
+  /** a server-built form may give one schema per language (same field names, translated labels) */
+  schema?: NormalizedSchema | Record<Lang, NormalizedSchema>;
   destination?: DestinationInfo;
   approval?: ApprovalInfo;
-  submitLabel?: string;
+  submitLabel?: Txt;
   clipboardSeconds?: number;
+  /** form field filled from the URL fragment (#...) on load; the fragment is then removed from history */
+  fragmentField?: string;
+  /** label of a button that posts action 'reveal' (e.g. show current values) */
+  revealLabel?: Txt;
   ttlMs: number;
   handle(p: SubmitPayload, lang: Lang): Promise<SubmitResult>;
   onExpire?(): void;
@@ -261,7 +296,7 @@ export class UiServer {
       return this.send(res, 400, 'application/json', JSON.stringify({ ok: false }));
     }
     if (!safeEqual(body.csrf, page.csrf)) return this.send(res, 403, 'application/json', JSON.stringify({ ok: false, message: 'bad csrf' }));
-    if (!['submit', 'cancel', 'approve', 'deny'].includes(body.action)) return this.send(res, 400, 'application/json', JSON.stringify({ ok: false }));
+    if (!['submit', 'cancel', 'approve', 'deny', 'reveal'].includes(body.action)) return this.send(res, 400, 'application/json', JSON.stringify({ ok: false }));
     if (page.spec.kind === 'preview') return this.send(res, 403, 'application/json', JSON.stringify({ ok: false }));
     if (page.busy) return this.send(res, 409, 'application/json', JSON.stringify({ ok: false }));
     page.busy = true;
@@ -273,7 +308,7 @@ export class UiServer {
     } finally {
       page.busy = false;
     }
-    const terminal = result.ok || body.action === 'cancel' || body.action === 'deny' || (!result.ok && !result.errors);
+    const terminal = body.action !== 'reveal' && (result.ok || body.action === 'cancel' || body.action === 'deny' || (!result.ok && !result.errors && !result.fallback));
     if (terminal) {
       page.done = true;
       clearTimeout(page.timer);
@@ -293,16 +328,27 @@ export class UiServer {
 
   private pageHtml(page: Page, t: Strings, lang: Lang, nonce: string): string {
     const s = page.spec;
+    const title = tr(s.title, lang);
+    const description = s.description === undefined ? undefined : tr(s.description, lang);
+    const a = s.approval;
     const data = {
       kind: s.kind,
       preview: s.kind === 'preview',
       csrf: page.csrf,
       action: `/p/${page.token}/action`,
       strings: t,
-      schema: s.schema ?? { sections: [] },
-      destination: s.destination,
-      approval: s.approval,
-      submitLabel: s.submitLabel,
+      schema: !s.schema ? { sections: [] } : 'sections' in s.schema ? s.schema : s.schema[lang],
+      destination: s.destination && { ...s.destination, lines: s.destination.lines.map((l) => ({ label: tr(l.label, lang), value: l.value })) },
+      approval: a && {
+        ...a,
+        items: a.items.map((it) => ({ label: tr(it.label, lang), value: it.value })),
+        warnings: a.warnings?.map((w) => tr(w, lang)),
+        approveLabel: a.approveLabel === undefined ? undefined : tr(a.approveLabel, lang),
+        editable: a.editable && { label: tr(a.editable.label, lang), value: a.editable.value },
+      },
+      submitLabel: s.submitLabel === undefined ? undefined : tr(s.submitLabel, lang),
+      fragmentField: s.fragmentField,
+      revealLabel: s.revealLabel === undefined ? undefined : tr(s.revealLabel, lang),
     };
     const other = lang === 'es' ? 'en' : 'es';
     const heading = s.kind === 'approval' ? t.approvalTitle : s.kind === 'clipboard' ? t.clipboardTitle : '';
@@ -313,7 +359,7 @@ export class UiServer {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<title>${esc(s.title)} · ${esc(t.appName)}</title>
+<title>${esc(title)} · ${esc(t.appName)}</title>
 <style nonce="${nonce}">${CSS}</style>
 </head>
 <body>
@@ -325,14 +371,14 @@ export class UiServer {
 <p class="notice">${esc(t.localNotice)}</p>
 <div class="card">
   ${heading ? `<p class="meta">${esc(heading)}</p>` : ''}
-  <h1>${esc(s.title)}</h1>
-  ${s.description ? `<p class="desc">${esc(s.description)}</p>` : ''}
+  <h1>${esc(title)}</h1>
+  ${description ? `<p class="desc">${esc(description)}</p>` : ''}
   <p class="meta">${esc(t.requestId)}: <code>${esc(s.opId)}</code></p>
   ${s.kind === 'preview' ? `<p class="banner" role="note">${esc(t.previewBanner)}</p>` : ''}
   ${s.kind === 'approval' ? `<p>${esc(t.approvalIntro)}</p>` : ''}
   ${s.kind === 'clipboard' ? `<p>${esc(t.clipboardIntro.replace('{n}', String(s.clipboardSeconds ?? 30)))}</p>` : ''}
   <div id="app"></div>
-  <noscript><p class="status err">JavaScript is required for this local page.</p></noscript>
+  <noscript><p class="status err">${esc(t.noScript)}</p></noscript>
 </div>
 </main>
 <script type="application/json" id="si-data">${jsonForScript(data)}</script>

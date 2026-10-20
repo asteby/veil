@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Txt } from './ui/i18n.js';
 import type { Config, DatabaseConfig } from './config.js';
 import { checkUrl, httpRequest } from './net.js';
 import type { Runner } from './proc.js';
@@ -9,7 +10,7 @@ import { checkTargetAllowed, describeTarget, TargetSchema, type TargetWriter } f
 import { fieldRefsDeep, renderJson, renderString, secretRefsDeep, showTemplate, stringify, typedValue, valuesToJson } from './templates.js';
 import { jsonPointer } from './stores/http-api.js';
 import { sha256Hex, UserError } from './util.js';
-import type { Vault, MetaInput } from './vault.js';
+import type { Vault, MetaInput, PutOptions } from './vault.js';
 
 /** Where blind_input values go. The model describes the sink; values never return. */
 export const SinkSchema = z.discriminatedUnion('type', [
@@ -65,6 +66,8 @@ export interface SinkResult {
   http_statuses?: number[];
   dry_run?: boolean;
   rows_validated?: number;
+  /** names stored in Veil's encrypted store because the OS keychain was not available */
+  stored_in_local_vault?: string[];
 }
 
 export interface SinkDeps {
@@ -80,10 +83,10 @@ export interface SinkPlan {
   /** Value-free plan (fingerprinted). */
   plan: Record<string, unknown>;
   /** Lines shown to the person on the form page. */
-  lines: { label: string; value: string }[];
+  lines: { label: Txt; value: string }[];
   /** true when the person must explicitly confirm (unless remembered). */
   requiresApproval: boolean;
-  execute(values: Values, requestId: string, meta: MetaInput): Promise<SinkResult>;
+  execute(values: Values, requestId: string, meta: MetaInput, opts?: PutOptions): Promise<SinkResult>;
 }
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
@@ -145,19 +148,23 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         plan: { type: 'store', destinations: dests, names: scalar.map(nameOf) },
         lines: [
           ...stores.map((s) => ({ label: s.id, value: s.describe() })),
-          { label: 'names', value: scalar.map(nameOf).join(', ') },
+          { label: { en: 'names', es: 'nombres' }, value: scalar.map(nameOf).join(', ') },
         ],
         requiresApproval: false,
-        async execute(values, _req, meta) {
+        async execute(values, _req, meta, opts) {
           const stored: string[] = [];
+          const fallback = new Set<string>();
           for (const f of scalar) {
             const v = values[f.name];
             if (v === null || v === undefined || v === '') continue;
             const value = typeof v === 'object' && v && 'amount' in v ? String((v as { amount: string }).amount) : stringify(v);
-            for (const dest of dests) await d.vault.put(dest, nameOf(f), value, { ...meta, field: { label: f.label, kind: f.kind, help: f.help, pattern: f.pattern } });
+            for (const dest of dests) {
+              const r = await d.vault.put(dest, nameOf(f), value, { ...meta, field: { label: f.label, kind: f.kind, help: f.help, pattern: f.pattern } }, opts);
+              if (r.fallback) fallback.add(nameOf(f));
+            }
             stored.push(nameOf(f));
           }
-          return { stored };
+          return fallback.size ? { stored, stored_in_local_vault: [...fallback] } : { stored };
         },
       };
     }
@@ -205,10 +212,10 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         type: sink.type,
         plan,
         lines: [
-          { label: 'request', value: `${method} ${url}` },
+          { label: { en: 'request', es: 'petición' }, value: `${method} ${url}` },
           ...Object.entries(headers).map(([k, v]) => ({ label: `header ${k}`, value: v })),
-          ...(sink.type === 'callback' ? [{ label: 'body', value: 'JSON with all form values' }] : body !== undefined ? [{ label: 'body', value: showTemplate(body) }] : []),
-          ...(each ? [{ label: 'each', value: `one request per row of ${each}` }] : []),
+          ...(sink.type === 'callback' ? [{ label: { en: 'body', es: 'cuerpo' }, value: 'JSON with all form values' }] : body !== undefined ? [{ label: { en: 'body', es: 'cuerpo' }, value: showTemplate(body) }] : []),
+          ...(each ? [{ label: { en: 'each', es: 'por cada' }, value: `one request per row of ${each}` }] : []),
         ],
         requiresApproval: true,
         async execute(values, requestId) {
@@ -273,10 +280,10 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         type: 'sql',
         plan,
         lines: [
-          { label: 'database', value: `${sink.database}${db.ssh ? ` (via ssh ${db.ssh})` : ''}` },
-          { label: 'statement', value: script.sqlPreview },
-          { label: 'columns', value: Object.entries(sink.columns).map(([c, t]) => `${c} ← ${t}`).join('\n') },
-          ...(sink.dry_run ? [{ label: 'dry run', value: 'validate and ROLLBACK (nothing is written)' }] : []),
+          { label: { en: 'database', es: 'base de datos' }, value: `${sink.database}${db.ssh ? ` (via ssh ${db.ssh})` : ''}` },
+          { label: { en: 'statement', es: 'sentencia' }, value: script.sqlPreview },
+          { label: { en: 'columns', es: 'columnas' }, value: Object.entries(sink.columns).map(([c, t]) => `${c} ← ${t}`).join('\n') },
+          ...(sink.dry_run ? [{ label: { en: 'dry run', es: 'simulación' }, value: 'validate and ROLLBACK (nothing is written)' }] : []),
         ],
         requiresApproval: true,
         async execute(values) {
@@ -301,7 +308,7 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         plan: { type: 'file', target: t, mapping: sink.mapping },
         lines: [
           ...Object.entries(describeTarget(t)).map(([k, v]) => ({ label: k, value: String(v) })),
-          { label: 'keys', value: Object.entries(sink.mapping).map(([f, k]) => `${k} ← ${f}`).join('\n') },
+          { label: { en: 'keys', es: 'claves' }, value: Object.entries(sink.mapping).map(([f, k]) => `${k} ← ${f}`).join('\n') },
         ],
         requiresApproval: true,
         async execute(values) {
@@ -390,7 +397,7 @@ async function runPsql(db: DatabaseConfig, d: SinkDeps, script: string, hasRetur
   if (db.ssh) {
     res = await d.ssh.script(db.ssh, '"$@"', psqlArgs, { stdin: script, timeoutMs: 300_000, maxOutputBytes: 4 * 1024 * 1024 });
   } else {
-    const env: NodeJS.ProcessEnv = { ...process.env, PGAPPNAME: 'veilform' };
+    const env: NodeJS.ProcessEnv = { ...process.env, PGAPPNAME: 'veil' };
     if (db.dsnSecret) Object.assign(env, parseDsn((await d.vault.resolve(db.dsnSecret)).value));
     if (db.passwordSecret) env.PGPASSWORD = (await d.vault.resolve(db.passwordSecret)).value;
     res = await d.runner(psqlArgs, { stdin: script, env, timeoutMs: 300_000, maxOutputBytes: 4 * 1024 * 1024 });

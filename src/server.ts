@@ -1,13 +1,16 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { App, Inputs } from './app.js';
+import { VaultInputs } from './vaulttools.js';
 import type { SafeResult } from './ops.js';
+import { fixOf } from './errors.js';
 import { log, UserError } from './util.js';
+import { VERSION } from './version.js';
 
-export const VERSION = '0.1.0';
+export { VERSION };
 
 const SECURITY_NOTE =
-  'You will NEVER receive secret values: only names, statuses, counts, ids and fingerprints. Do not ask the person to paste secrets in chat; use these tools instead. Do not try to read the stores, the .env files written by this server, or the veilform directory with other tools.';
+  'You will NEVER receive secret values: only names, statuses, counts, ids and fingerprints. Do not ask the person to paste secrets in chat; use these tools instead. Do not try to read the stores, the .env files written by this server, or the Veil directory with other tools.';
 
 /** Flat input for secret_use (a top-level JSON object schema is friendlier to clients than a union). */
 const SecretUseInput = z.object({
@@ -24,12 +27,13 @@ const SecretUseInput = z.object({
   url: z.string().optional().describe('http: https URL on an allowlisted host'),
   headers: z.record(z.string(), z.string()).optional().describe('http: headers; values may contain ${secret:name}'),
   body: z.string().optional().describe('http: body; may contain ${secret:name}'),
+  env_file: z.object({ file: z.string(), keys: z.array(z.string()).optional() }).optional().describe('exec: also inject keys of an encrypted .env (decrypted in memory into the child env only)'),
 });
 
 type Handler = (args: unknown) => Promise<SafeResult> | SafeResult;
 
 export function createServer(app: App): McpServer {
-  const server = new McpServer({ name: 'veilform', version: VERSION }, { instructions: `veilform: ask people for credentials and other sensitive values through a local page, store them, and use them without seeing them. ${SECURITY_NOTE}` });
+  const server = new McpServer({ name: 'veil', version: VERSION }, { instructions: `Veil: ask people for credentials and other sensitive values through a local page, store them, and use them without seeing them. ${SECURITY_NOTE}` });
 
   app.elicitor = {
     supportsUrl: () => Boolean((server.server.getClientCapabilities()?.elicitation as { url?: unknown } | undefined)?.url),
@@ -52,7 +56,10 @@ export function createServer(app: App): McpServer {
       return { content: [{ type: 'text' as const, text: app.safe(result) }] };
     } catch (e) {
       let message: string;
-      if (e instanceof UserError) message = `${e.code}: ${e.message}`;
+      if (e instanceof UserError) {
+        // structured, value-free: code + what happened + fix (text and exact command), en/es
+        return { isError: true, content: [{ type: 'text' as const, text: app.safe({ error: `${e.code}: ${e.message}`, code: e.code, ...fixOf(e) }) }] };
+      }
       else if (e instanceof z.ZodError) message = `invalid_args: ${e.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.code}`).join('; ')}`;
       else {
         message = 'internal error (details withheld to protect values)';
@@ -143,7 +150,7 @@ export function createServer(app: App): McpServer {
     {
       title: 'Copy a stored secret to a file or service',
       description:
-        'Writes stored values to an allowlisted target without exposing them: env-file (local or ssh host; updates only that key, keeps comments, 0600, atomic, optional backup), json/yaml by key path, systemd EnvironmentFile drop-in, GitHub Actions secret (gh, via stdin) or the clipboard (only after the person clicks, auto-cleared). First use of each target needs approval. dry_run tells which keys would be created/updated. Returns {written, target, keys:[{key, action}]}.',
+        'Writes stored values (or, with from:{kind:"env-enc", file, keys}, values of an encrypted .env; with as_is:true the encrypted file itself) to an allowlisted target without exposing them: env-file (local or ssh host; updates only that key, keeps comments, 0600, atomic, optional backup), json/yaml by key path, systemd EnvironmentFile drop-in, GitHub Actions secret (gh, via stdin) or the clipboard (only after the person clicks, auto-cleared). First use of each target needs approval. dry_run tells which keys would be created/updated. Returns {written, target, keys:[{key, action}]}.',
       inputSchema: Inputs.secret_write,
     },
     wrap('secret_write', (a) => app.secretWrite(a)),
@@ -201,6 +208,48 @@ export function createServer(app: App): McpServer {
     },
     wrap('ssh_exec', (a) => app.sshExec(a)),
   );
+
+  server.registerTool(
+    'doctor',
+    {
+      title: 'Diagnose what Veil needs on this machine',
+      description:
+        'Read-only diagnosis: Node/crypto (argon2id), OS keychain backend (secret-tool + D-Bus + Secret Service lock state on Linux, security on macOS, Windows plan), the default destination and Veil\'s encrypted store, session agent, permissions of the Veil directory and optional tools (ssh, git, gh, psql, Chromium). Each problem has impact and the exact fix command for the detected distribution (apt/dnf/pacman/zypper/brew). Runs nothing privileged, needs no secret. Show the fix commands to the person; never run sudo yourself.',
+      inputSchema: Inputs.doctor,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    wrap('doctor', () => app.doctor()),
+  );
+
+  server.registerTool(
+    'local_unlock',
+    {
+      title: "Create or unlock Veil's encrypted store",
+      description: `Opens a LOCAL page where the person defines (first use) or types the master password of Veil's own encrypted store (used when the OS keychain is unavailable). The password never passes through you. It stays unlocked in memory for N minutes (session agent when running). Returns {status, unlocked, created, via}. Use it when another tool answers passphrase_required. ${SECURITY_NOTE}`,
+      inputSchema: Inputs.local_unlock,
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    wrap('local_unlock', (a) => app.localUnlock(a)),
+  );
+
+  const reg = (name: string, title: string, description: string, input: z.ZodObject, fn: Handler, annotations?: Record<string, boolean>) =>
+    server.registerTool(name, { title, description: `${description} ${SECURITY_NOTE}`, inputSchema: input, annotations }, wrap(name, fn));
+  const T = app.tools;
+
+  reg('vault_export', 'Encrypted backup of the vault to a file', 'Writes a single-file encrypted bundle (.vfb) of every secret (envelope encryption: one data key per secret, wrapped by a key derived from a passphrase the person types on a local page, plus an optional key file / keychain factor). Names are encrypted too. Returns {file, seq, count, names}.', VaultInputs.vault_export, (a) => T.vaultExport(a));
+  reg('vault_sync', 'Sync the encrypted vault to a storage target', 'Pulls (when the target is ahead) and pushes the encrypted bundle to an allowlisted target (folder, ssh, private git repo, S3/R2, WebDAV, HTTP). The target only sees opaque blobs. Conflicts are never overwritten silently: choose strategy keep-local / take-remote / keep-both. Returns counts and names.', VaultInputs.vault_sync, (a) => T.vaultSync(a));
+  reg('vault_import', 'Restore secrets from an encrypted bundle', 'Imports a bundle from a target or a .vfb file after verifying integrity and anti-rollback (seq). Reports created/updated/unchanged/kept_local/conflicts (names only).', VaultInputs.vault_import, (a) => T.vaultImport(a));
+  reg('vault_rekey', 'Rotate the backup key (KEK)', 'The person types the current and the new passphrase on a local page; every data key is re-wrapped, values are not re-encrypted.', VaultInputs.vault_rekey, (a) => T.vaultRekey(a));
+  reg('share_create', 'Share secrets by token', 'Opens a local page that shows the person WHICH names will be shared (never values), expiry and max views, and optionally asks for a share passphrase (second factor). On approval an encrypted bundle with a fresh key is uploaded to a sync target; the TOKEN (key in the URL fragment) is shown ONLY on that page. You get {share_id, names, expires_at, max_views}.', VaultInputs.share_create, (a) => T.shareCreate(a));
+  reg('share_list', 'List shares created here', 'Share ids, names, expiry, views, revocation (no tokens).', VaultInputs.share_list, (a) => T.shareList(a), { readOnlyHint: true });
+  reg('share_revoke', 'Revoke a share', 'Deletes the share bundle from its target. Revoking does not make a reader forget: if it was read, rotate the secrets (rotate:true opens secret_rotate for each).', VaultInputs.share_revoke, (a) => T.shareRevoke(a), { destructiveHint: true });
+  reg('share_import', 'Import a shared secret into this vault (blind)', 'For a receiving agent: the token is read from token_file or pasted by the person on a local page (with the passphrase, if any). Values go straight into the local vault; use them later with secret_use / secret_write. Returns stored names only.', VaultInputs.share_import, (a) => T.shareImport(a));
+  reg('env_status', 'Status of an encrypted .env', 'Keys (names), recipients, which unlock methods work here, locked/unlocked. No values.', VaultInputs.env_status, (a) => T.envStatus(a), { readOnlyHint: true });
+  reg('env_unlock', 'Unlock an encrypted .env for a while', 'The person types the passphrase or pastes a share token on a local page; the data key stays in this server memory for N minutes.', VaultInputs.env_unlock, (a) => T.envUnlock(a));
+  reg('env_encrypt', 'Encrypt a plaintext .env', 'Per-value encryption keeping keys, comments and order (git friendly). Recipients: a passphrase typed on the local page and/or key files / keychain. Optional best-effort shredding of the original.', VaultInputs.env_encrypt, (a) => T.envEncrypt(a));
+  reg('env_edit', 'Edit an encrypted .env (blind)', 'Opens a local form listing the keys; the person types new values, deletes or adds keys; values are re-encrypted. You get which keys changed.', VaultInputs.env_edit, (a) => T.envEdit(a));
+  reg('env_diff', 'Which keys changed in an encrypted .env', 'Compares with another file or a git revision (default git:HEAD). Names only.', VaultInputs.env_diff, (a) => T.envDiff(a), { readOnlyHint: true });
+  reg('env_rotate', 'Rotate the data key of an encrypted .env', 'New data key, every value re-encrypted, recipients re-wrapped.', VaultInputs.env_rotate, (a) => T.envRotate(a));
 
   return server;
 }

@@ -13,7 +13,7 @@ Report privately through GitHub's *Security → Report a vulnerability* (private
 
 ## Scope
 
-In scope: anything that lets the model, the transcript, logs, argv or another local web origin obtain a value handled by this server; bypasses of the single-use token, CSRF, Origin/Host checks or CSP; approval bypasses; allowlist escapes (paths, hosts, tables, origins); weaknesses in the encrypted-file format.
+In scope: anything that lets the model, the transcript, logs, argv or another local web origin obtain a value handled by this server; bypasses of the single-use token, CSRF, Origin/Host checks or CSP; approval bypasses; allowlist escapes (paths, hosts, tables, origins); weaknesses in the encrypted-file, sync bundle, share token and encrypted `.env` formats, and in the master-password store.
 
 Out of scope (see [THREAT-MODEL.md](THREAT-MODEL.md) §6): actions the owner explicitly approved, same-OS-user malware, compromised browsers/extensions, and values the owner chose to deploy into plaintext files.
 

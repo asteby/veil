@@ -119,9 +119,9 @@ export class KeyedMutex {
 /** Logger to stderr. Only ever pass ids, names and codes. */
 export const log = {
   info: (msg: string) => {
-    if (process.env.VEILFORM_QUIET !== '1') console.error(`[veilform] ${msg}`);
+    if ((process.env.VEIL_QUIET ?? process.env.VEILFORM_QUIET) !== '1') console.error(`[veil] ${msg}`);
   },
-  warn: (msg: string) => console.error(`[veilform] WARN ${msg}`),
+  warn: (msg: string) => console.error(`[veil] WARN ${msg}`),
 };
 
 /** Shell-quote one argument for POSIX sh (single quotes). Not for secrets. */
