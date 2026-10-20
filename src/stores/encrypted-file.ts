@@ -1,4 +1,7 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCb, type ScryptOptions } from 'node:crypto';
+
+const scrypt = (pw: string, salt: Buffer, len: number, o: ScryptOptions) =>
+  new Promise<Buffer>((res, rej) => scryptCb(pw, salt, len, o, (e, k) => (e ? rej(e) : res(k))));
 import { LocalFileIO } from '../fileio.js';
 import { expandHome, KeyedMutex, UserError } from '../util.js';
 import type { PutResult, SecretStore } from './types.js';
@@ -78,7 +81,7 @@ export class EncryptedFileStore implements SecretStore {
       if (this.cachedKey?.salt === shape.kdf.salt) key = this.cachedKey.key;
       else {
         const { N, r, p } = shape.kdf;
-        key = scryptSync(km.passphrase, Buffer.from(shape.kdf.salt, 'base64'), 32, { N, r, p, maxmem: 256 * N * r });
+        key = await scrypt(km.passphrase, Buffer.from(shape.kdf.salt, 'base64'), 32, { N, r, p, maxmem: 256 * N * r });
         this.cachedKey = { salt: shape.kdf.salt, key };
       }
     }
@@ -101,7 +104,7 @@ export class EncryptedFileStore implements SecretStore {
       if (km.passphrase.length < 8) throw new UserError('passphrase too short (min 8 chars)', 'weak_passphrase');
       const salt = randomBytes(16).toString('base64');
       const { N, r, p } = this.scryptParams;
-      key = scryptSync(km.passphrase, Buffer.from(salt, 'base64'), 32, { N, r, p, maxmem: 256 * N * r });
+      key = await scrypt(km.passphrase, Buffer.from(salt, 'base64'), 32, { N, r, p, maxmem: 256 * N * r });
       this.cachedKey = { salt, key };
       shape = { v: 1, kdf: { name: 'scrypt', salt, N, r, p }, check: enc(key, CHECK, '__check__'), entries: {} };
     }
