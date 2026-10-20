@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Config } from './config.js';
 import type { Runner, RunResult } from './proc.js';
 import { PrivateAgent, type Ssh, type SshKeyProvider } from './ssh.js';
-import { expandHome, sleep, UserError } from './util.js';
+import { expandHome, shQuote, sleep, UserError } from './util.js';
 import type { Vault } from './vault.js';
 
 export interface KeyRecord {
@@ -144,7 +144,8 @@ export class SshKeys implements SshKeyProvider {
     }
   }
 
-  private installScript = 'umask 077; mkdir -p "$HOME/.ssh"; touch "$HOME/.ssh/authorized_keys"; chmod 700 "$HOME/.ssh"; chmod 600 "$HOME/.ssh/authorized_keys"; k=$(cat); grep -qxF "$k" "$HOME/.ssh/authorized_keys" || printf "%s\\n" "$k" >> "$HOME/.ssh/authorized_keys"';
+  /** $1 = authorized_keys path ('' = ~/.ssh/authorized_keys). The public key arrives on stdin. */
+  private installScript = 'set -eu; umask 077; f="${1:-$HOME/.ssh/authorized_keys}"; d=$(dirname -- "$f"); mkdir -p -- "$d"; touch -- "$f"; if [ "$d" = "$HOME/.ssh" ]; then chmod 700 -- "$d"; fi; chmod 600 -- "$f"; k=$(cat); grep -qxF -- "$k" "$f" || printf "%s\\n" "$k" >> "$f"';
 
   /**
    * Installs the public key. With a password: ssh asks our SSH_ASKPASS helper, which
@@ -154,7 +155,7 @@ export class SshKeys implements SshKeyProvider {
   async install(hostKey: string, rec: KeyRecord, password?: string): Promise<void> {
     const pub = readFileSync(rec.publicKeyFile, 'utf8').trim();
     if (!password) {
-      const r = await this.ssh.script(hostKey, this.installScript, [], { stdin: pub + '\n', timeoutMs: 60_000 });
+      const r = await this.ssh.script(hostKey, this.installScript, [this.ssh.hostConfig(hostKey).authorizedKeysFile ?? ''], { stdin: pub + '\n', timeoutMs: 60_000 });
       if (r.code !== 0) throw new UserError('could not install the public key (no existing access?)', 'install_failed');
       return;
     }
@@ -179,7 +180,7 @@ export class SshKeys implements SshKeyProvider {
         ...(user ? ['-l', user] : []),
         hostname,
         '--',
-        `sh -c '${this.installScript.replace(/'/g, `'\\''`)}'`,
+        [this.ssh.hostConfig(hostKey).sudo ? 'sudo -n sh -c' : 'sh -c', shQuote(this.installScript), 'sh', shQuote(this.ssh.hostConfig(hostKey).authorizedKeysFile ?? '')].join(' '),
       ];
       const env = { ...process.env, SSH_ASKPASS: helper, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: process.env.DISPLAY ?? ':0', SI_ASKPASS_FIFO: fifo };
       const running: Promise<RunResult> = this.runner(argv, { stdin: pub + '\n', env, timeoutMs: 60_000 });

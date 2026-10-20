@@ -78,6 +78,8 @@ const SshHost = z.object({
   /** Use a key provisioned by ssh_key_provision under this alias. */
   keyAlias: z.string().optional(),
   sudo: z.boolean().default(false),
+  /** Where ssh_key_provision installs public keys (default ~/.ssh/authorized_keys of the remote user). */
+  authorizedKeysFile: z.string().optional(),
 });
 export type SshHostConfig = z.infer<typeof SshHost>;
 
