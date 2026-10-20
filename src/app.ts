@@ -18,7 +18,7 @@ import { UiServer, type PageSpec, type SubmitPayload, type SubmitResult } from '
 import { STRINGS, type Lang } from './ui/i18n.js';
 import { fingerprint, log, newId, UserError } from './util.js';
 import { Vault, type MetaInput } from './vault.js';
-import { Extractor, stepsLiteral, siteOf, WebRunner, WebStep, type WebStepT } from './web.js';
+import { checkWebPlan, Extractor, stepsLiteral, siteOf, WebRunner, WebStep, type WebStepT } from './web.js';
 
 // ------------------------------------------------------------------ tool input schemas
 
@@ -586,6 +586,7 @@ export class App {
     const a = Inputs.web_capture.parse(raw);
     const site = siteOf(this.cfg, a.site);
     const url = a.url ?? site.startUrl ?? site.origins[0]!;
+    checkWebPlan(this.cfg, a.site, url, a.steps);
     const destination = a.destination ?? this.cfg.defaultDestination;
     const store = this.vault.store(destination);
     const meta = { ...this.metaFrom(a.metadata), source: `web:${a.site}` };
@@ -624,6 +625,7 @@ export class App {
     const a = Inputs.web_login.parse(raw);
     const site = siteOf(this.cfg, a.site);
     const url = a.url ?? site.startUrl ?? site.origins[0]!;
+    checkWebPlan(this.cfg, a.site, url, a.steps);
     const refs = secretRefsDeep(a.steps);
     await this.preflight(refs);
     const plan = { tool: 'web_login', site: a.site, url, steps: a.steps, save_session: a.save_session };

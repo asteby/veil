@@ -68,6 +68,13 @@ function originAllowed(origins: string[], url: string): boolean {
   }
 }
 
+/** Validates start URL and navigate steps against the site's origins (before asking for approval). */
+export function checkWebPlan(cfg: Config, site: string, url: string, steps: WebStepT[]): void {
+  const s = siteOf(cfg, site);
+  if (!originAllowed(s.origins, url)) throw new UserError('start URL is outside the site origins allowlist', 'origin_not_allowed');
+  for (const st of steps) if ('navigate' in st && !originAllowed(s.origins, st.navigate)) throw new UserError('navigate step is outside the site origins allowlist', 'origin_not_allowed');
+}
+
 /** Literal rendering of steps for the approval page. */
 export function stepsLiteral(url: string, steps: WebStepT[], extract?: ExtractorT): string {
   const lines = [`open ${url}`];
@@ -101,8 +108,7 @@ export class WebRunner {
 
   async run(site: string, url: string, steps: WebStepT[], extract: ExtractorT | undefined, opts: { saveSession: boolean }): Promise<WebRunResult> {
     const s = siteOf(this.cfg, site);
-    if (!originAllowed(s.origins, url)) throw new UserError('start URL is outside the site origins allowlist', 'origin_not_allowed');
-    for (const st of steps) if ('navigate' in st && !originAllowed(s.origins, st.navigate)) throw new UserError('navigate step is outside the site origins allowlist', 'origin_not_allowed');
+    checkWebPlan(this.cfg, site, url, steps);
     const refs = secretRefsDeep(steps);
     const secrets = new Map<string, string>();
     for (const r of refs) secrets.set(r, (await this.vault.resolve(r)).value);
