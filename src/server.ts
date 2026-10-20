@@ -7,7 +7,7 @@ import { log, UserError } from './util.js';
 export const VERSION = '0.1.0';
 
 const SECURITY_NOTE =
-  'You will NEVER receive secret values: only names, statuses, counts, ids and fingerprints. Do not ask the person to paste secrets in chat; use these tools instead. Do not try to read the stores, the .env files written by this server, or the blindkey directory with other tools.';
+  'You will NEVER receive secret values: only names, statuses, counts, ids and fingerprints. Do not ask the person to paste secrets in chat; use these tools instead. Do not try to read the stores, the .env files written by this server, or the veilform directory with other tools.';
 
 /** Flat input for secret_use (a top-level JSON object schema is friendlier to clients than a union). */
 const SecretUseInput = z.object({
@@ -29,7 +29,7 @@ const SecretUseInput = z.object({
 type Handler = (args: unknown) => Promise<SafeResult> | SafeResult;
 
 export function createServer(app: App): McpServer {
-  const server = new McpServer({ name: 'blindkey', version: VERSION }, { instructions: `blindkey: ask people for credentials and other sensitive values through a local page, store them, and use them without seeing them. ${SECURITY_NOTE}` });
+  const server = new McpServer({ name: 'veilform', version: VERSION }, { instructions: `veilform: ask people for credentials and other sensitive values through a local page, store them, and use them without seeing them. ${SECURITY_NOTE}` });
 
   app.elicitor = {
     supportsUrl: () => Boolean((server.server.getClientCapabilities()?.elicitation as { url?: unknown } | undefined)?.url),

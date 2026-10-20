@@ -31,7 +31,7 @@ export type KeyMaterial = { kind: 'passphrase'; passphrase: string } | { kind: '
 export type KeyProvider = () => Promise<KeyMaterial>;
 
 const SCRYPT = { N: 1 << 17, r: 8, p: 1 };
-const CHECK = 'blindkey:v1';
+const CHECK = 'veilform:v1';
 
 function enc(key: Buffer, plaintext: string, aad: string): Entry {
   const iv = randomBytes(12);

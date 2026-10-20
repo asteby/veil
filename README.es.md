@@ -1,10 +1,10 @@
-# blindkey
+# veilform
 
 **Que un agente de IA pida, guarde y use credenciales sin verlas jamás.**
 
 [English](README.md) · [Modelo de amenazas](THREAT-MODEL.md) · [Política de seguridad](SECURITY.md) · [Cambios](CHANGELOG.md)
 
-`blindkey` es un servidor [MCP](https://modelcontextprotocol.io) de código abierto (stdio, TypeScript). Cuando el agente necesita una API key, una contraseña o cualquier dato sensible, manda **solo metadatos** (el esquema de un formulario). Se abre en tu navegador una página servida en `http://127.0.0.1`; escribes ahí los valores y van directo al destino que configuraste (llavero del sistema, archivo cifrado, `.env`, servidor remoto por SSH, Vault/Infisical/1Password/OPS, una API HTTP, una tabla de Postgres…). El agente solo recibe `{request_id, status, stored:[nombres]}`.
+`veilform` es un servidor [MCP](https://modelcontextprotocol.io) de código abierto (stdio, TypeScript). Cuando el agente necesita una API key, una contraseña o cualquier dato sensible, manda **solo metadatos** (el esquema de un formulario). Se abre en tu navegador una página servida en `http://127.0.0.1`; escribes ahí los valores y van directo al destino que configuraste (llavero del sistema, archivo cifrado, `.env`, servidor remoto por SSH, Vault/Infisical/1Password/OPS, una API HTTP, una tabla de Postgres…). El agente solo recibe `{request_id, status, stored:[nombres]}`.
 
 Después el agente escribe `${secret:STRIPE_KEY}` y este servidor lo resuelve **dentro de su propio proceso, en el momento de usarlo**, después de que apruebas la acción exacta en otra página local.
 
@@ -28,15 +28,15 @@ Requisitos: Node ≥ 20.11. En Linux el destino `keychain` usa `secret-tool` (pa
 
 ```bash
 pnpm install && pnpm build
-claude mcp add blindkey -- node /ruta/a/blindkey/dist/cli.js
-# cuando esté publicado:  claude mcp add blindkey -- npx -y blindkey
+claude mcp add veilform -- node /ruta/a/veilform/dist/cli.js
+# cuando esté publicado:  claude mcp add veilform -- npx -y veilform
 ```
 
-Variables opcionales: `BLINDKEY_HOME` (por defecto `~/.config/blindkey`), `BLINDKEY_CONFIG`, `BLINDKEY_AGENT` (etiqueta que se escribe en la auditoría).
+Variables opcionales: `VEILFORM_HOME` (por defecto `~/.config/veilform`), `VEILFORM_CONFIG`, `VEILFORM_AGENT` (etiqueta que se escribe en la auditoría).
 
-La configuración es una **allowlist**: copia [`examples/config.example.json`](examples/config.example.json) a `~/.config/blindkey/config.json` y deja solo lo necesario. Sin archivo hay un único destino, `local` (llavero del SO). Verifícala con `blindkey check-config`.
+La configuración es una **allowlist**: copia [`examples/config.example.json`](examples/config.example.json) a `~/.config/veilform/config.json` y deja solo lo necesario. Sin archivo hay un único destino, `local` (llavero del SO). Verifícala con `veilform check-config`.
 
-Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las herramientas propias del agente lo que este servidor protege, p. ej. `"deny": ["Read(~/.config/blindkey/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
+Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las herramientas propias del agente lo que este servidor protege, p. ej. `"deny": ["Read(~/.config/veilform/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 
 ## Ejemplos
 
@@ -62,7 +62,7 @@ Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las
 3. Llenas o apruebas. Token CSRF + verificación de Origin/Host + CSP estricta con nonce; nada de terceros; sin autocompletado.
 4. Los valores van al destino desde este proceso (stdin/env, nunca argv; nunca en logs).
 5. Las respuestas son estructurales; un filtro final elimina cualquier valor manejado y sus codificaciones.
-6. Cada uso queda en la auditoría (JSONL encadenado por hash: sesión, agente, cliente, acción, huella, nombres). `blindkey verify-audit` verifica la cadena.
+6. Cada uso queda en la auditoría (JSONL encadenado por hash: sesión, agente, cliente, acción, huella, nombres). `veilform verify-audit` verifica la cadena.
 
 Lee [THREAT-MODEL.md](THREAT-MODEL.md) para lo que **no** se protege — en particular: un comando aprobado que exfiltre el valor, malware con tu mismo usuario, y **usar otro navegador que el modelo sí ve** (p. ej. una extensión de navegador manejada por el agente) para abrir una página que muestra un secreto. **Cuándo NO usar un navegador visible para el modelo:** en paneles de credenciales (Mercado Pago, Stripe, WooCommerce, hosting) y en cualquier página que muestre llaves, tokens o datos personales; usa `web_capture`/`web_login`.
 

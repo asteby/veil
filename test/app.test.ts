@@ -48,7 +48,7 @@ describe('secret_request → store → secret_use (end to end, in process)', () 
     const w = await call(() => t.app.secretWait({ id: r.request_id }));
     expect(w).toMatchObject({ status: 'completed', stored: ['MP_ACCESS_TOKEN', 'MP_ENV'] });
     expect(Object.keys(w).sort()).toEqual(['request_id', 'status', 'stored']);
-    expect(t.keychain.data.get('blindkey/MP_ACCESS_TOKEN')).toBe(VALUE);
+    expect(t.keychain.data.get('veilform/MP_ACCESS_TOKEN')).toBe(VALUE);
     const list = await call(() => t.app.secretList({}));
     expect((list.secrets as { name: string; project: string }[]).map((s) => s.name)).toEqual(['MP_ACCESS_TOKEN', 'MP_ENV']);
     const audit = readFileSync(path.join(t.home, 'audit.jsonl'), 'utf8');
@@ -278,7 +278,7 @@ describe('secret_write', () => {
     const file = path.join(t.home, 'etc', 'myapp.env');
     await import('node:fs').then((fs) => {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, '# GOD\'S store\nPORT=3000\nMP_ACCESS_TOKEN=old\n', { mode: 0o644 });
+      writeFileSync(file, '# Acme store\nPORT=3000\nMP_ACCESS_TOKEN=old\n', { mode: 0o644 });
     });
     const target = { kind: 'env-file', path: file, key: 'MP_ACCESS_TOKEN' };
     expect(await t.app.secretWrite({ name: 'MP_ACCESS_TOKEN', target, dry_run: true })).toEqual({ dry_run: true, target: { kind: 'env-file', host: 'local', path: file }, changes: [{ key: 'MP_ACCESS_TOKEN', action: 'updated' }] });

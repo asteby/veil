@@ -119,7 +119,7 @@ export async function runExec(a: z.infer<typeof ExecAction>, secrets: Map<string
   if (a.shell && !cfg.exec.allowShell) throw new UserError('shell execution is disabled in config', 'shell_disabled');
   const env: NodeJS.ProcessEnv = { ...process.env };
   // Never leak this server's own bootstrap material to children.
-  for (const k of Object.keys(env)) if (k.startsWith('BLINDKEY')) delete env[k];
+  for (const k of Object.keys(env)) if (k.startsWith('VEILFORM')) delete env[k];
   for (const d of Object.values(cfg.destinations)) if (d.type === 'encrypted-file' && d.key.source === 'env') delete env[d.key.env];
   for (const [k, v] of Object.entries(a.env ?? {})) {
     if (!ENV_KEY_RE.test(k)) throw new UserError(`invalid env name ${k}`, 'invalid_args');

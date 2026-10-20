@@ -390,7 +390,7 @@ async function runPsql(db: DatabaseConfig, d: SinkDeps, script: string, hasRetur
   if (db.ssh) {
     res = await d.ssh.script(db.ssh, '"$@"', psqlArgs, { stdin: script, timeoutMs: 300_000, maxOutputBytes: 4 * 1024 * 1024 });
   } else {
-    const env: NodeJS.ProcessEnv = { ...process.env, PGAPPNAME: 'blindkey' };
+    const env: NodeJS.ProcessEnv = { ...process.env, PGAPPNAME: 'veilform' };
     if (db.dsnSecret) Object.assign(env, parseDsn((await d.vault.resolve(db.dsnSecret)).value));
     if (db.passwordSecret) env.PGPASSWORD = (await d.vault.resolve(db.passwordSecret)).value;
     res = await d.runner(psqlArgs, { stdin: script, env, timeoutMs: 300_000, maxOutputBytes: 4 * 1024 * 1024 });

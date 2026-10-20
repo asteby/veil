@@ -51,6 +51,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  console.error(`[blindkey] fatal: ${e instanceof Error && e.name === 'UserError' ? e.message : 'startup failed'}`);
+  console.error(`[veilform] fatal: ${e instanceof Error && e.name === 'UserError' ? e.message : 'startup failed'}`);
   process.exit(1);
 });

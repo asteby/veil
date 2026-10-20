@@ -151,7 +151,7 @@ export class App {
     this.paths = deps.paths ?? resolvePaths();
     this.cfg = deps.cfg ?? loadConfig(this.paths);
     this.runner = deps.runner ?? defaultRunner;
-    this.audit = new AuditLog(this.paths.auditFile, { session: this.session, agent: deps.agent ?? process.env.BLINDKEY_AGENT });
+    this.audit = new AuditLog(this.paths.auditFile, { session: this.session, agent: deps.agent ?? process.env.VEILFORM_AGENT });
     this.approvals = new Approvals(this.paths.approvalsFile);
     this.ui = new UiServer({ lang: this.cfg.ui.lang });
     this.ssh = new Ssh(this.cfg, this.runner, path.join(this.paths.home, 'known_hosts'));
@@ -500,7 +500,7 @@ export class App {
           { label: 'secrets', value: refs.join(', ') },
           { label: 'action', value: action.action === 'exec' ? (action.shell ? 'exec (shell)' : 'exec (argv, no shell)') : 'http' },
           ...(action.action === 'exec' && action.cwd ? [{ label: 'cwd', value: action.cwd }] : []),
-          { label: 'agent session', value: `${this.session}${process.env.BLINDKEY_AGENT ? ` (${process.env.BLINDKEY_AGENT})` : ''}` },
+          { label: 'agent session', value: `${this.session}${process.env.VEILFORM_AGENT ? ` (${process.env.VEILFORM_AGENT})` : ''}` },
         ],
         literal: actionLiteral(action),
         warnings: actionWarnings(action, lang),
@@ -599,7 +599,7 @@ export class App {
         items: [
           { label: 'site', value: `${a.site} (${site.origins.join(', ')})` },
           { label: 'stores as', value: `${a.name} → ${store.describe()}` },
-          { label: 'browser', value: this.cfg.web.headless ? 'headless' : 'visible window owned by blindkey (log in there yourself)' },
+          { label: 'browser', value: this.cfg.web.headless ? 'headless' : 'visible window owned by veilform (log in there yourself)' },
         ],
         literal: stepsLiteral(url, a.steps, a.extract),
         warnings: [],
@@ -675,7 +675,7 @@ export class App {
           { label: 'host', value: `${target.user ? target.user + '@' : ''}${target.hostname}:${target.port}` },
           { label: 'host key fingerprints', value: scan.fingerprints.join('\n') },
           { label: 'known host', value: scan.known ? 'yes (already in known_hosts)' : 'NO: compare these fingerprints with your provider panel / server console' },
-          { label: 'private key storage', value: a.storage === 'store' ? `secret store (${this.vault.internalDestination}), loaded into a private ssh-agent` : 'file 0600 in the blindkey directory' },
+          { label: 'private key storage', value: a.storage === 'store' ? `secret store (${this.vault.internalDestination}), loaded into a private ssh-agent` : 'file 0600 in the veilform directory' },
         ],
         needsConfirm: false,
         rememberable: false,

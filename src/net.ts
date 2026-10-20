@@ -55,7 +55,7 @@ export function httpRequest(req: HttpRequest): Promise<HttpResponse> {
     const options: https.RequestOptions = {
       method: req.method.toUpperCase(),
       // explicit length: Node does not chunk-encode bodies of DELETE/GET by default
-      headers: { 'user-agent': 'blindkey', ...(req.headers ?? {}), ...(body ? { 'content-length': String(body.length) } : {}) },
+      headers: { 'user-agent': 'veilform', ...(req.headers ?? {}), ...(body ? { 'content-length': String(body.length) } : {}) },
       timeout: req.timeoutMs ?? 30_000,
     };
     if (req.caFile) options.ca = readFileSync(expandHome(req.caFile));

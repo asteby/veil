@@ -1,15 +1,15 @@
-# blindkey
+# veilform
 
 **Let an AI agent ask for, store and use credentials — without ever seeing them.**
 
 [Español](README.es.md) · [Threat model](THREAT-MODEL.md) · [Security policy](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-`blindkey` is an open-source [Model Context Protocol](https://modelcontextprotocol.io) server (stdio, TypeScript). When the agent needs an API key, a password or any sensitive data, it sends **only metadata** (a form schema). A page served on `http://127.0.0.1` opens in your browser; you type the values there; they go straight to a destination you configured (OS keychain, encrypted file, `.env`, remote server over SSH, Vault/Infisical/1Password/OPS, an HTTP API, a Postgres table…). The agent only gets back `{request_id, status, stored:[names]}`.
+`veilform` is an open-source [Model Context Protocol](https://modelcontextprotocol.io) server (stdio, TypeScript). When the agent needs an API key, a password or any sensitive data, it sends **only metadata** (a form schema). A page served on `http://127.0.0.1` opens in your browser; you type the values there; they go straight to a destination you configured (OS keychain, encrypted file, `.env`, remote server over SSH, Vault/Infisical/1Password/OPS, an HTTP API, a Postgres table…). The agent only gets back `{request_id, status, stored:[names]}`.
 
 Later the agent says `${secret:STRIPE_KEY}` and this server resolves it **inside its own process, at the moment of use**, after you approve the exact action on another local page.
 
 ```
- agent ──metadata──▶ blindkey ──opens──▶ http://127.0.0.1:PORT/p/<one-time token>
+ agent ──metadata──▶ veilform ──opens──▶ http://127.0.0.1:PORT/p/<one-time token>
    ▲                       │                                  │ you type values
    │  names / status       │◀──────────── values (local) ─────┘
    └───────────────────────┤
@@ -41,15 +41,15 @@ Requirements: Node ≥ 20.11. Linux needs `secret-tool` (package `libsecret-tool
 pnpm install && pnpm build
 
 # Claude Code
-claude mcp add blindkey -- node /path/to/blindkey/dist/cli.js
-# once published:  claude mcp add blindkey -- npx -y blindkey
+claude mcp add veilform -- node /path/to/veilform/dist/cli.js
+# once published:  claude mcp add veilform -- npx -y veilform
 ```
 
-Optional environment: `BLINDKEY_HOME` (default `~/.config/blindkey`), `BLINDKEY_CONFIG`, `BLINDKEY_AGENT` (label written to the audit log).
+Optional environment: `VEILFORM_HOME` (default `~/.config/veilform`), `VEILFORM_CONFIG`, `VEILFORM_AGENT` (label written to the audit log).
 
-Configuration is an **allowlist**: copy [`examples/config.example.json`](examples/config.example.json) to `~/.config/blindkey/config.json` and keep only what you need. Without a config file there is one destination, `local` (OS keychain). Check it with `blindkey check-config`.
+Configuration is an **allowlist**: copy [`examples/config.example.json`](examples/config.example.json) to `~/.config/veilform/config.json` and keep only what you need. Without a config file there is one destination, `local` (OS keychain). Check it with `veilform check-config`.
 
-Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's own tools access to what this server protects, e.g. `"deny": ["Read(~/.config/blindkey/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
+Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's own tools access to what this server protects, e.g. `"deny": ["Read(~/.config/veilform/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 
 ## Examples
 
@@ -82,7 +82,7 @@ Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's ow
 3. You fill/approve. CSRF token + Origin/Host checks + strict nonce CSP; nothing third-party; no autocomplete.
 4. Values go to the destination from this process (stdin/env, never argv; never logged).
 5. Tool results are structural; a last-line scrub removes any handled value and its encodings.
-6. Every use is audited (hash-chained JSONL: session, agent, client, action, fingerprint, names). `blindkey verify-audit` checks the chain.
+6. Every use is audited (hash-chained JSONL: session, agent, client, action, fingerprint, names). `veilform verify-audit` checks the chain.
 
 Read [THREAT-MODEL.md](THREAT-MODEL.md) for what is **not** protected — notably: an approved command that exfiltrates the value, same-user malware, and **using another browser the model can see** (e.g. a browser extension the agent drives) to open a page that shows a secret.
 

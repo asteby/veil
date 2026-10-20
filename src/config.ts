@@ -14,7 +14,7 @@ const SecretRef = z.string().describe('"name" or "destination:name" of a stored 
 
 const KeychainDest = z.object({
   type: z.literal('keychain'),
-  service: z.string().default('blindkey'),
+  service: z.string().default('veilform'),
 });
 
 const EncryptedFileDest = z.object({
@@ -22,10 +22,10 @@ const EncryptedFileDest = z.object({
   path: z.string(),
   key: z
     .discriminatedUnion('source', [
-      z.object({ source: z.literal('keychain'), service: z.string().default('blindkey'), account: z.string().default('encrypted-file-key') }),
-      z.object({ source: z.literal('env'), env: z.string().default('BLINDKEY_PASSPHRASE') }),
+      z.object({ source: z.literal('keychain'), service: z.string().default('veilform'), account: z.string().default('encrypted-file-key') }),
+      z.object({ source: z.literal('env'), env: z.string().default('VEILFORM_PASSPHRASE') }),
     ])
-    .default({ source: 'keychain', service: 'blindkey', account: 'encrypted-file-key' }),
+    .default({ source: 'keychain', service: 'veilform', account: 'encrypted-file-key' }),
 });
 
 const EnvFileDest = z.object({
@@ -129,7 +129,7 @@ export const ConfigSchema = z.object({
     .default({ lang: 'auto', openBrowser: true, ttlSeconds: 600, blockSeconds: 0 }),
   cacheTtlSeconds: z.number().int().min(0).max(3600).default(60),
   defaultDestination: z.string().default('local'),
-  destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: 'blindkey' } }),
+  destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: 'veilform' } }),
   ssh: z
     .object({
       binary: z.string().default('ssh'),
@@ -184,10 +184,10 @@ export interface Paths {
 }
 
 export function resolvePaths(env: NodeJS.ProcessEnv = process.env): Paths {
-  const home = expandHome(env.BLINDKEY_HOME ?? path.join(env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), 'blindkey'));
+  const home = expandHome(env.VEILFORM_HOME ?? path.join(env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), 'veilform'));
   return {
     home,
-    configFile: expandHome(env.BLINDKEY_CONFIG ?? path.join(home, 'config.json')),
+    configFile: expandHome(env.VEILFORM_CONFIG ?? path.join(home, 'config.json')),
     auditFile: path.join(home, 'audit.jsonl'),
     indexFile: path.join(home, 'index.json'),
     approvalsFile: path.join(home, 'approvals.json'),

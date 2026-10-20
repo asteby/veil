@@ -23,7 +23,7 @@ export class SecretToolBackend implements KeychainBackend {
   constructor(private readonly runner: Runner) {}
 
   async set(service: string, account: string, value: string): Promise<void> {
-    const r = await this.runner(['secret-tool', 'store', `--label=blindkey: ${account}`, 'service', service, 'account', account], {
+    const r = await this.runner(['secret-tool', 'store', `--label=veilform: ${account}`, 'service', service, 'account', account], {
       stdin: value,
       timeoutMs: 30_000,
     });
