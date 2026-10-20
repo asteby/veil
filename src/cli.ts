@@ -4,6 +4,7 @@ import { App } from './app.js';
 import { verifyAuditLog } from './audit.js';
 import { resolvePaths, loadConfig } from './config.js';
 import { createServer, VERSION } from './server.js';
+import { runVaultCli } from './cli-vault.js';
 
 async function main(): Promise<void> {
   const arg = process.argv[2];
@@ -27,6 +28,16 @@ async function main(): Promise<void> {
     const bad = verifyAuditLog(resolvePaths().auditFile);
     process.stdout.write(bad ? `audit log broken at line ${bad}\n` : 'audit log OK\n');
     process.exitCode = bad ? 1 : 0;
+    return;
+  }
+  const code = await runVaultCli(process.argv.slice(2), () => new App());
+  if (code !== undefined) {
+    process.exitCode = code;
+    return;
+  }
+  if (arg && arg !== 'serve') {
+    process.stderr.write(`unknown command ${arg}; try "veilform help"\n`);
+    process.exitCode = 2;
     return;
   }
   const app = new App();
