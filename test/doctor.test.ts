@@ -137,7 +137,7 @@ describe('doctor', () => {
     expect(check(r, 'keychain.unlocked').fix?.command).toContain('security unlock-keychain');
     expect(check(r, 'tools.gh').fix?.command).toBe('brew install gh');
     r = await runDoctor(deps({ platform: 'win32', bins: [] }));
-    expect(check(r, 'keychain.unsupported')).toMatchObject({ status: 'warn', fix: { command: 'veilform init' } });
+    expect(check(r, 'keychain.unsupported')).toMatchObject({ status: 'warn', fix: { command: 'veil init' } });
     expect(check(r, 'keychain.unsupported').title.en).toMatch(/Credential Manager/);
     expect(r.default_destination.effective).toBe('local-vault');
     expect(r.ready).toBe(true);
@@ -195,5 +195,18 @@ describe('init plan (user-level only)', () => {
     const p2 = planInit(d.paths, r);
     expect(p2.steps.find((s) => s.id === 'config')).toBeUndefined();
     expect(p2.notes.map((n) => n.en).join(' ')).toMatch(/invalid/);
+  });
+});
+
+describe('rename to Veil', () => {
+  it('suggests moving the former ~/.config/veilform directory (info, never an error)', async () => {
+    const base = tmpDir('vf-legacy-');
+    extra.push(base);
+    const legacy = path.join(base, 'veilform');
+    mkdirSync(legacy, { mode: 0o700 });
+    const r = await runDoctor(deps({ paths: { home: legacy, configFile: path.join(legacy, 'config.json'), auditFile: '', indexFile: '', approvalsFile: '', dataDir: '' } }));
+    expect(check(r, 'config.legacy_dir')).toMatchObject({ status: 'info', fix: { command: `mv ${legacy} ${path.join(base, 'veil')}` } });
+    const fresh = await runDoctor(deps());
+    expect(fresh.checks.find((c) => c.id === 'config.legacy_dir')).toBeUndefined();
   });
 });
