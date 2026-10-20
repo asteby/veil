@@ -1,6 +1,6 @@
 # Threat model — veilform
 
-> Status: MVP (0.1.0). This document is deliberately honest about what is **not** protected.
+> Status: 0.2 (unreleased): intake, approval and use (§1–§7), encrypted sync/sharing/`.env` (§8), own encrypted store and setup (§9). Planned next-generation work (broker, `.veil` container, team mode) is designed in [docs/ENGINEERING-PLAN-NEXT-GEN.md](docs/ENGINEERING-PLAN-NEXT-GEN.md) and is **not** covered here. This document is deliberately honest about what is **not** protected.
 
 ## 1. What we are trying to achieve
 
@@ -99,7 +99,7 @@ Append-only JSONL with a SHA-256 hash chain (`prev` field); `veilform verify-aud
 11. **Clipboard.** Other apps (clipboard managers, sync) may capture the value before it is cleared; clearing only happens while the tab stays open.
 12. **SQL via `psql`.** Values are data, never SQL text, but the `psql` argv prefix and target tables/columns come from the owner's config; a misconfigured allowlist widens what the model can write.
 13. **Web capture.** We stop the browser from typing secrets or extracting outside allowlisted origins, but a compromised allowlisted site can still receive what it is given.
-14. **Windows** keychain backend is not implemented (use `encrypted-file`).
+14. **Windows** keychain backend is not implemented; the own encrypted store (§9) is used instead.
 
 ## 7. Recommendations for operators
 
@@ -108,6 +108,8 @@ Append-only JSONL with a SHA-256 hash chain (`prev` field); `veilform verify-aud
 - Scope remote-store tokens narrowly; rotate (`secret_rotate`, `rotate_after_days`).
 - Review `approvals.json` periodically; delete entries to force re-approval.
 - Run `veilform verify-audit` in your backups.
+- Run `veilform doctor` after OS upgrades or when moving to a headless/SSH machine; keep the master password of the own store (§9) in a password manager.
+- Use `vault_sync` with a key-file second factor for off-machine copies, and rotate secrets after sharing them with a person (§8.2).
 
 ## 8. Sync, sharing and encrypted .env files
 
