@@ -151,6 +151,7 @@ export type FieldValue = string | number | boolean | string[] | FileValue | Mone
 export type Values = Record<string, FieldValue>;
 
 function isEmpty(v: unknown): boolean {
+  if (v && typeof v === 'object' && !Array.isArray(v) && 'amount' in (v as object)) return isEmpty((v as { amount: unknown }).amount);
   return v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
 }
 
@@ -224,9 +225,6 @@ function validateField(f: FieldDef, raw: unknown, path: string, errors: FieldErr
     }
     case 'date': {
       if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(Date.parse(raw + 'T00:00:00Z'))) return err('type');
-      if (f.min !== undefined || f.max !== undefined) {
-        /* min/max on dates are not supported: use pattern */
-      }
       return raw;
     }
     case 'select': {
