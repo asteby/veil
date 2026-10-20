@@ -34,7 +34,7 @@ Later the agent says `${secret:STRIPE_KEY}` and this server resolves it **inside
 
 ## Install
 
-Requirements: Node ≥ 20.11. Linux needs `secret-tool` (package `libsecret-tools`) for the keychain destination; macOS uses the built-in `security`. Optional: `playwright-core` + Chromium for `web_capture`, `psql` for SQL sinks, `gh` for GitHub secrets, OpenSSH for SSH features.
+Requirements: Node ≥ 20.11 — nothing else. The OS keychain is used when it works (Linux: `secret-tool` from `libsecret-tools` + GNOME Keyring/KWallet; macOS: the built-in `security`); when it does not, Veil uses its own encrypted store and needs no extra package (see [First use](#first-use)). Optional: `playwright-core` + Chromium for `web_capture`, `psql` for SQL sinks, `gh` for GitHub secrets, OpenSSH for SSH features. `veilform doctor` tells you exactly what is missing and the command to install it.
 
 ```bash
 # from a clone (not published to npm yet)
@@ -45,9 +45,49 @@ claude mcp add veilform -- node /path/to/veilform/dist/cli.js
 # once published:  claude mcp add veilform -- npx -y veilform
 ```
 
+## First use
+
+```bash
+npx veilform init          # once published as @asteby/veil: npx @asteby/veil init
+```
+
+`init` runs the doctor, shows a plan and, after you confirm (`--yes` to skip the question, `--dry-run` to only look), applies **user-level changes only**: it creates `~/.config/veilform` (0700), tightens permissions and writes a `config.json` whose default destination **works without installing anything**:
+
+- OS keychain usable → `local` = keychain with `fallback: "auto"` (if the keychain later breaks, values go to Veil's encrypted store).
+- OS keychain missing/locked/unsupported → `local` = Veil's encrypted store (`encrypted-file` with `key: {source: "master"}`, file `~/.config/veilform/local-vault.json`).
+
+It never runs `sudo` and never asks for a secret. Commands that need privileges (e.g. `sudo apt install -y libsecret-tools`) are printed for you to copy. An optional `postinstall` only prints a hint; set `VEILFORM_POSTINSTALL=init` to run `init --dry-run` right after installing.
+
+**Veil's encrypted store** is one file in the existing `encrypted-file` format: AES-256-GCM per value (the name is the AAD), key derived with argon2id (Node ≥ 24.7; scrypt N=2^17 otherwise) from a **master password**:
+
+1. The first time a value has to go there, the local page (127.0.0.1) asks you to **define the master password right there** — never in the chat, MCP arguments or argv. You can also do it ahead of time: `veilform unlock`, `veilform init --master`, or the MCP tool `local_unlock`.
+2. Unlocking keeps only the **derived key** in memory: in the session agent (`veilform agent`) when it runs — then every Veil process shares it and `veilform lock` forgets it — or inside the MCP process, for `localVault.unlockMinutes` (default 15).
+3. Later, when the keychain works, you can save the derived key there so the store opens without typing the password: `veilform unlock --save-keychain` (`--forget-keychain` undoes it). `veilform unlock --change-password` re-encrypts everything under a new password.
+4. No plaintext is ever written to disk; values and the master password are registered in the scrub list before anything else and never reach responses, logs or the audit trail.
+
+> **If you forget the master password the data cannot be recovered** — by design, there is no back door. Keep the password in your password manager or on paper, and back up `local-vault.json` (it is useless without the password). For an off-machine encrypted copy use `veilform export` / `vault_sync`.
+
+When the default destination is the keychain and it fails during a `secret_request`, the page **offers to continue with the encrypted store** (asking for — or creating — the master password on that same page) instead of failing, and shows the exact command to fix the keychain for good. Set `fallback: "never"` on a keychain destination to forbid that.
+
+## Troubleshooting
+
+Run `veilform doctor` (or the read-only MCP tool `doctor`; `--json` for machines). It checks Node/crypto (argon2id), the keychain backend (secret-tool, D-Bus session, Secret Service provider and whether the default keyring is unlocked on Linux; `security` on macOS; on Windows the Credential Manager backend is planned and the encrypted store is used), the default destination, the encrypted store and session agent, permissions of `~/.config/veilform`, and ssh/git/gh/psql/Chromium for the features that use them. Every problem lists its impact and the exact command for your distribution (apt, dnf, pacman, zypper, apk, brew, winget). It runs nothing privileged and asks for nothing secret.
+
+Errors are structured — `{error, code, help:{en,es}, fix:{en,es,command, alternative}}` — in MCP responses, and translated on the local page:
+
+| Code | Meaning | Fix |
+|---|---|---|
+| `keychain_unavailable` | `secret-tool` not installed (`reason: missing_tool`), no D-Bus session (`no_dbus`, SSH/headless) or no Secret Service (`no_service`) | `sudo apt install -y libsecret-tools` (or dnf/pacman/…), `dbus-run-session -- $SHELL`, `gnome-keyring-daemon --start --components=secrets` — or `veilform init` |
+| `keychain_locked` | the keyring is locked / waiting for an unlock prompt | unlock "Login" in Passwords and Keys (`seahorse`); macOS: `security unlock-keychain` |
+| `keychain_unsupported` | no keychain backend on this OS yet (Windows) | `veilform init` (encrypted store) |
+| `passphrase_required` | the encrypted store is locked | MCP `local_unlock` or `veilform unlock` |
+| `master_password_not_set` | the encrypted store has no master password yet | define it on the local page (`veilform unlock`) |
+| `destination_not_configured` | the destination is not in `config.json` | `veilform init` or add it |
+| `wrong_key` / `too_many_attempts` | wrong master password / temporary lockout after 5 failures | try again later |
+
 Optional environment: `VEILFORM_HOME` (default `~/.config/veilform`), `VEILFORM_CONFIG`, `VEILFORM_AGENT` (label written to the audit log).
 
-Configuration is an **allowlist**: copy [`examples/config.example.json`](examples/config.example.json) to `~/.config/veilform/config.json` and keep only what you need. Without a config file there is one destination, `local` (OS keychain). Check it with `veilform check-config`.
+Configuration is an **allowlist**: copy [`examples/config.example.json`](examples/config.example.json) to `~/.config/veilform/config.json` and keep only what you need. Without a config file there is one destination, `local` (OS keychain, `fallback: "ask"`: the page offers Veil's encrypted store if the keychain fails). Check it with `veilform check-config` and `veilform doctor`.
 
 Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's own tools access to what this server protects, e.g. `"deny": ["Read(~/.config/veilform/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 

@@ -63,7 +63,7 @@ Removes the value and common variants: raw, trimmed, JSON-escaped (single and do
 
 ### 4.6 Storage
 - `keychain`: OS keychain via Secret Service (`secret-tool`) or macOS `security`.
-- `encrypted-file`: AES-256-GCM per entry with the entry name as AAD; key = random 32 bytes in the OS keychain, or scrypt (N=2^17) of a passphrase from an env var. File 0600, atomic replace.
+- `encrypted-file`: AES-256-GCM per entry with the entry name as AAD; key = random 32 bytes in the OS keychain, scrypt (N=2^17) of a passphrase from an env var, or — Veil's own store, `key: {source: "master"}` — argon2id/scrypt of a master password typed on the local page (§9). File 0600, atomic replace.
 - `env-file` / `ssh-file` / `secret_write` targets: 0600 by default, temp file + rename (atomic), optional backup, only the requested key changes.
 - In-memory cache of resolved values: TTL `cacheTtlSeconds` (default 60 s), cleared on exit. No plaintext cache on disk.
 - SSH private keys created by `ssh_key_provision` are stored in the secret store and loaded via `ssh-add -` into a **private ssh-agent** owned by this process (or a 0600 file if the owner prefers).
@@ -143,3 +143,22 @@ Append-only JSONL with a SHA-256 hash chain (`prev` field); `veilform verify-aud
 | Model never sees values | yes (local pages, blind use) | n/a | n/a | n/a | n/a |
 
 Use Vault response wrapping or 1Password when you need *server-enforced* single use; use age/sops when you need public-key recipients. veilform's value is that agents can move, back up and share secrets without any value entering the model context.
+
+## 9. Veil's own encrypted store (keychain fallback) and setup
+
+Why it exists: on a machine without `secret-tool` (or with a locked keyring, no D-Bus session, or Windows) `secret_request` to the keychain used to fail with a bare `sink_failed`, and fixing it needed `sudo`. Now the default destination works with nothing installed.
+
+### 9.1 What is protected
+- **Format.** The existing `encrypted-file` v1 file: AES-256-GCM per value with the entry name as AAD (values cannot be swapped between names), a check block to detect a wrong password, 0600 + atomic replace. Key = argon2id (64 MiB, 3 passes; Node ≥ 24.7) or scrypt (N=2^17) of the master password with a random salt; KDF parameters read from the header are bounded. Keychain-fallback entries are namespaced `destination:name` and the index records `backend: "vault"` (never a value).
+- **The master password never crosses the agent boundary.** It is typed only on the 127.0.0.1 page (same single-use token, cookie binding, CSRF, Origin and CSP as every page) or on the TTY without echo; it is never accepted from MCP arguments or argv. It is registered in the scrub list before use, never logged, never written. Tests check disk (index, audit, store, attempts file), MCP responses and the scrubber for values and the master password (`test/setup.test.ts`, `e2e/setup.spec.ts`).
+- **Unlocked state is a derived key, in memory only:** in the session agent (0600 socket in a 0700 directory; `veilform lock` forgets it everywhere; per-process copy ≤ 10 s) or in the MCP process for `localVault.unlockMinutes`. Restarting the process locks it.
+- **Online guessing through our UI** is limited to 5 failures per store, then a lockout that doubles (persisted).
+- **Consent.** With `fallback: "ask"` (default) a value goes to the encrypted store only after the person accepts it on the page; `auto` is chosen explicitly (`veilform init`); `never` forbids it.
+- **Setup never escalates.** `doctor` only reads files, scans PATH and runs read-only, unprivileged probes (`busctl --user get-property … Locked`, `security show-keychain-info`; the D-Bus call may auto-start the user's keyring daemon). `init` only writes the user's veilform directory/config (backup `config.json.bak`). Privileged commands are printed, never executed.
+
+### 9.2 Honest limits (NOT protected)
+1. **Forgotten master password = data lost.** There is no recovery and no back door. Keep the password in a password manager or on paper and back up the file; use `veilform export`/`vault_sync` for an off-machine copy.
+2. **Offline guessing.** Whoever copies `local-vault.json` can guess offline at argon2id/scrypt cost; only the password strength protects it (minimum 10 characters; use several random words).
+3. **Same-user processes** can talk to the session agent, read the MCP process memory or (with `--save-keychain`) read the derived key from the keychain — the same trust boundary as the OS keychain itself (§6).
+4. **Entry names** are visible in the file (they are also in the index); values are not.
+5. **No global MAC / rollback protection** in `encrypted-file` v1: someone with write access to the file can delete entries or restore an older copy of the whole file (each entry still authenticates).

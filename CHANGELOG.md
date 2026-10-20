@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ## [Unreleased]
 
 ### Added
+- Works without installing anything: Veil's own encrypted store (the `encrypted-file` format with `key: {source: "master"}`; argon2id/scrypt master password defined on the local page on first use, unlocked in memory via the session agent or the MCP process, optional `--save-keychain`, password change, attempt limits). Keychain destinations fall back to it (`fallback: ask | auto | never`; default `ask`): the `secret_request` page offers it instead of failing.
+- `veilform doctor` and MCP tool `doctor` (read-only): Node/argon2id, keychain backend per OS (secret-tool, D-Bus, Secret Service provider and lock state; macOS `security`; Windows plan), default destination, encrypted store, session agent, permissions, ssh/git/gh/psql/Chromium; impact + exact fix command per distribution (apt/dnf/pacman/zypper/apk/brew/winget).
+- `veilform init [--yes] [--dry-run] [--master]`: doctor + plan + user-level config only (never sudo); `veilform unlock [--save-keychain|--forget-keychain|--change-password|--status]`; MCP tool `local_unlock`; `veil` bin alias; optional `postinstall` hint.
+- Actionable errors: `keychain_unavailable` (reason `missing_tool`/`no_dbus`/`no_service`), `keychain_locked`, `keychain_unsupported`, `passphrase_required`, `master_password_not_set`, `destination_not_configured`… with `help` and `fix` (text + command, en/es) in MCP responses and on the local page, never values.
+
+### Changed
+- `destination_not_allowed` is now `destination_not_configured`. The keychain backends no longer crash when `secret-tool` is missing and report locked/unavailable keyrings instead of a generic `sink_failed`.
 - Encrypted vault backup/sync: `vault_export`, `vault_sync`, `vault_import`, `vault_rekey` and `veilform export|import|sync|rekey`. Envelope encryption (per-secret AES-256-GCM DEK wrapped by an argon2id/scrypt + optional key-file/keychain KEK), encrypted index (names hidden from storage), anti-rollback `seq`, vector clocks with explicit conflict strategies, KEK rotation without re-encrypting values.
 - Sync targets: local folder, SSH, private git repo, S3/R2/MinIO (own SigV4), WebDAV, generic HTTP; single-file `.vfb` layout.
 - Share by token: `share_create`, `share_list`, `share_revoke`, `share_import`, `veilform share open|list|revoke`. Fresh key per share in the URL fragment, optional passphrase factor, authenticated expiry and max views, burn after read, revocation with rotation hint, attempt limits, local reveal page with copy button and auto-hide.
