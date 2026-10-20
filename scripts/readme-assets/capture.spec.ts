@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, wr
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { makeApp, type TestApp } from '../../test/helpers.js';
+import { makeApp, memKeychain, type TestApp } from '../../test/helpers.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const OUT = path.join(ROOT, 'docs/assets');
@@ -88,6 +88,9 @@ function app(lang: Lang, extra: Record<string, unknown> = {}): TestApp {
       },
     },
     ...extra,
+  }, {
+    // In-memory keychain, labelled like the real Linux backend so the destination box reads as it would.
+    keychainBackend: Object.assign(memKeychain(), { name: 'secret-tool' }),
   });
   return t;
 }
