@@ -3,11 +3,11 @@
   "cacheTtlSeconds": 60,
   "defaultDestination": "local",
   "destinations": {
-    "local": { "type": "keychain", "service": "secret-intake-mcp" },
-    "vault": { "type": "encrypted-file", "path": "~/.config/secret-intake/data/secrets.enc", "key": { "source": "keychain" } },
-    "dev-dotenv": { "type": "env-file", "path": "~/projects/gods-store/.env" },
-    "prod-env": { "type": "env-file", "host": "godnutrition", "path": "/etc/gods-store/gods-store.env", "owner": "gods", "group": "gods", "backup": true },
-    "prod-files": { "type": "ssh-file", "host": "godnutrition", "path": "/etc/gods-store/secrets/{name}", "mode": "0640", "owner": "root", "group": "gods" },
+    "local": { "type": "keychain", "service": "blindkey" },
+    "vault": { "type": "encrypted-file", "path": "~/.config/blindkey/data/secrets.enc", "key": { "source": "keychain" } },
+    "dev-dotenv": { "type": "env-file", "path": "~/projects/myapp/.env" },
+    "prod-env": { "type": "env-file", "host": "prod-vps", "path": "/etc/myapp/myapp.env", "owner": "app", "group": "app", "backup": true },
+    "prod-files": { "type": "ssh-file", "host": "prod-vps", "path": "/etc/myapp/secrets/{name}", "mode": "0640", "owner": "root", "group": "app" },
     "infisical": {
       "type": "http-api", "adapter": "infisical", "baseUrl": "https://app.infisical.com",
       "auth": { "tokenRef": "local:infisical_token", "scheme": "bearer" },
@@ -16,7 +16,7 @@
     "hashicorp": {
       "type": "http-api", "adapter": "vault-kv2", "baseUrl": "https://vault.example.com",
       "auth": { "tokenRef": "local:vault_token", "scheme": "header", "header": "X-Vault-Token" },
-      "options": { "mount": "secret", "field": "value", "pathPrefix": "gods/" }
+      "options": { "mount": "secret", "field": "value", "pathPrefix": "appdb/" }
     },
     "onepassword": {
       "type": "http-api", "adapter": "1password-connect", "baseUrl": "https://op-connect.example.com",
@@ -31,23 +31,23 @@
   },
   "ssh": {
     "hosts": {
-      "godnutrition": { "host": "panel.example.com", "user": "deploy", "keyAlias": "gods_deploy", "sudo": true }
+      "prod-vps": { "host": "panel.example.com", "user": "deploy", "keyAlias": "deploy_key", "sudo": true }
     }
   },
   "writeTargets": [
-    { "kind": "env-file", "host": "godnutrition", "path": "/etc/gods-store/*.env", "keys": ["MP_*", "STRIPE_*"] },
+    { "kind": "env-file", "host": "prod-vps", "path": "/etc/myapp/*.env", "keys": ["MP_*", "STRIPE_*"] },
     { "kind": "env-file", "path": "~/projects/**/.env" },
     { "kind": "json", "path": "~/projects/**/config/*.json" },
-    { "kind": "systemd", "host": "godnutrition", "unit": "gods-store.service", "keys": ["MP_*"] },
+    { "kind": "systemd", "host": "prod-vps", "unit": "myapp.service", "keys": ["MP_*"] },
     { "kind": "github", "repo": "your-org/*", "keys": ["MP_*", "STRIPE_*"] },
     { "kind": "clipboard" }
   ],
   "http": { "allowedHosts": ["api.stripe.com", "api.mercadopago.com"] },
-  "exec": { "defaultTimeoutMs": 60000, "maxOutputBytes": 65536, "allowShell": true, "redactEnvFiles": ["~/projects/gods-store/.env"] },
+  "exec": { "defaultTimeoutMs": 60000, "maxOutputBytes": 65536, "allowShell": true, "redactEnvFiles": ["~/projects/myapp/.env"] },
   "databases": {
-    "gods": {
-      "ssh": "godnutrition",
-      "psql": ["sudo", "-u", "postgres", "psql", "-d", "gods"],
+    "appdb": {
+      "ssh": "prod-vps",
+      "psql": ["sudo", "-u", "postgres", "psql", "-d", "appdb"],
       "tables": {
         "public.product_prices": { "columns": ["sku", "price_usd", "list"], "conflict": ["sku", "list"], "returning": "id" },
         "public.customers": { "columns": ["name", "email", "phone", "rfc"], "returning": "id" }

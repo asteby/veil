@@ -120,7 +120,7 @@ export class SshKeys implements SshKeyProvider {
     chmodSync(tmp, 0o700);
     try {
       const keyPath = path.join(tmp, 'id');
-      const r = await this.runner(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', `secret-intake:${alias}`, '-f', keyPath], { timeoutMs: 20_000 });
+      const r = await this.runner(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', `blindkey:${alias}`, '-f', keyPath], { timeoutMs: 20_000 });
       if (r.code !== 0) throw new UserError('ssh-keygen failed', 'keygen_failed');
       const priv = readFileSync(keyPath, 'utf8');
       const pub = readFileSync(keyPath + '.pub', 'utf8').trim();

@@ -17,7 +17,7 @@ test('full stack over stdio: the built server, a real MCP client and a real brow
     JSON.stringify({
       defaultDestination: 'vault',
       ui: { openBrowser: false, lang: 'en' },
-      destinations: { vault: { type: 'encrypted-file', path: path.join(home, 'secrets.enc'), key: { source: 'env', env: 'SECRET_INTAKE_PASSPHRASE' } } },
+      destinations: { vault: { type: 'encrypted-file', path: path.join(home, 'secrets.enc'), key: { source: 'env', env: 'BLINDKEY_PASSPHRASE' } } },
       writeTargets: [{ kind: 'env-file', path: path.join(home, '**') }],
     }),
   );
@@ -25,7 +25,7 @@ test('full stack over stdio: the built server, a real MCP client and a real brow
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [CLI],
-    env: { ...(process.env as Record<string, string>), SECRET_INTAKE_HOME: home, SECRET_INTAKE_PASSPHRASE: 'e2e passphrase 1234', SECRET_INTAKE_AGENT: 'playwright-e2e' },
+    env: { ...(process.env as Record<string, string>), BLINDKEY_HOME: home, BLINDKEY_PASSPHRASE: 'e2e passphrase 1234', BLINDKEY_AGENT: 'playwright-e2e' },
     stderr: 'pipe',
   });
   transport.stderr?.on('data', (d) => stderr.push(String(d)));

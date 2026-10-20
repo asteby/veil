@@ -119,9 +119,9 @@ export class KeyedMutex {
 /** Logger to stderr. Only ever pass ids, names and codes. */
 export const log = {
   info: (msg: string) => {
-    if (process.env.SECRET_INTAKE_QUIET !== '1') console.error(`[secret-intake] ${msg}`);
+    if (process.env.BLINDKEY_QUIET !== '1') console.error(`[blindkey] ${msg}`);
   },
-  warn: (msg: string) => console.error(`[secret-intake] WARN ${msg}`),
+  warn: (msg: string) => console.error(`[blindkey] WARN ${msg}`),
 };
 
 /** Shell-quote one argument for POSIX sh (single quotes). Not for secrets. */

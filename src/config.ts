@@ -14,7 +14,7 @@ const SecretRef = z.string().describe('"name" or "destination:name" of a stored 
 
 const KeychainDest = z.object({
   type: z.literal('keychain'),
-  service: z.string().default('secret-intake-mcp'),
+  service: z.string().default('blindkey'),
 });
 
 const EncryptedFileDest = z.object({
@@ -22,10 +22,10 @@ const EncryptedFileDest = z.object({
   path: z.string(),
   key: z
     .discriminatedUnion('source', [
-      z.object({ source: z.literal('keychain'), service: z.string().default('secret-intake-mcp'), account: z.string().default('encrypted-file-key') }),
-      z.object({ source: z.literal('env'), env: z.string().default('SECRET_INTAKE_PASSPHRASE') }),
+      z.object({ source: z.literal('keychain'), service: z.string().default('blindkey'), account: z.string().default('encrypted-file-key') }),
+      z.object({ source: z.literal('env'), env: z.string().default('BLINDKEY_PASSPHRASE') }),
     ])
-    .default({ source: 'keychain', service: 'secret-intake-mcp', account: 'encrypted-file-key' }),
+    .default({ source: 'keychain', service: 'blindkey', account: 'encrypted-file-key' }),
 });
 
 const EnvFileDest = z.object({
@@ -94,7 +94,7 @@ const WriteTarget = z.object({
 export type WriteTargetRule = z.infer<typeof WriteTarget>;
 
 const Database = z.object({
-  /** argv prefix that starts psql reading a script from stdin, e.g. ["psql","-d","gods"] or ["docker","exec","-i","db","psql","-U","app","-d","app"]. */
+  /** argv prefix that starts psql reading a script from stdin, e.g. ["psql","-d","appdb"] or ["docker","exec","-i","db","psql","-U","app","-d","app"]. */
   psql: z.array(z.string()).default(['psql']),
   ssh: z.string().optional(),
   /** postgres:// DSN stored as a secret; parsed into PG* env vars (never argv). Local only. */
@@ -129,7 +129,7 @@ export const ConfigSchema = z.object({
     .default({ lang: 'auto', openBrowser: true, ttlSeconds: 600, blockSeconds: 0 }),
   cacheTtlSeconds: z.number().int().min(0).max(3600).default(60),
   defaultDestination: z.string().default('local'),
-  destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: 'secret-intake-mcp' } }),
+  destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: 'blindkey' } }),
   ssh: z
     .object({
       binary: z.string().default('ssh'),
@@ -184,10 +184,10 @@ export interface Paths {
 }
 
 export function resolvePaths(env: NodeJS.ProcessEnv = process.env): Paths {
-  const home = expandHome(env.SECRET_INTAKE_HOME ?? path.join(env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), 'secret-intake'));
+  const home = expandHome(env.BLINDKEY_HOME ?? path.join(env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), 'blindkey'));
   return {
     home,
-    configFile: expandHome(env.SECRET_INTAKE_CONFIG ?? path.join(home, 'config.json')),
+    configFile: expandHome(env.BLINDKEY_CONFIG ?? path.join(home, 'config.json')),
     auditFile: path.join(home, 'audit.jsonl'),
     indexFile: path.join(home, 'index.json'),
     approvalsFile: path.join(home, 'approvals.json'),

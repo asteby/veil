@@ -1,8 +1,8 @@
 export type Lang = 'en' | 'es';
 
 const en = {
-  appName: 'secret-intake',
-  localNotice: 'Local page served by secret-intake-mcp on this computer. Check that the address bar shows http://127.0.0.1. The AI agent cannot see what you type here.',
+  appName: 'blindkey',
+  localNotice: 'Local page served by blindkey on this computer. Check that the address bar shows http://127.0.0.1. The AI agent cannot see what you type here.',
   requestId: 'Request',
   submit: 'Save securely',
   send: 'Send',
@@ -64,8 +64,8 @@ const en = {
 };
 
 const es: typeof en = {
-  appName: 'secret-intake',
-  localNotice: 'Página local servida por secret-intake-mcp en esta computadora. Verifica que la barra de direcciones muestre http://127.0.0.1. El agente de IA no puede ver lo que escribas aquí.',
+  appName: 'blindkey',
+  localNotice: 'Página local servida por blindkey en esta computadora. Verifica que la barra de direcciones muestre http://127.0.0.1. El agente de IA no puede ver lo que escribas aquí.',
   requestId: 'Solicitud',
   submit: 'Guardar de forma segura',
   send: 'Enviar',

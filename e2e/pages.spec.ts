@@ -58,7 +58,7 @@ test('secret_request form (Spanish, dark): Mercado Pago', async ({ browser }) =>
       { name: 'MP_ACCESS_TOKEN', label: 'Access token', help: 'Empieza con APP_USR-' },
       { name: 'MP_PUBLIC_KEY', label: 'Public key', kind: 'text' },
     ],
-    metadata: { project: 'gods-store', rotate_after_days: 180 },
+    metadata: { project: 'myapp', rotate_after_days: 180 },
   });
   await page.goto(String(r.url));
   await expect(page.getByRole('button', { name: 'Guardar de forma segura' })).toBeVisible();
@@ -87,7 +87,7 @@ test('blind_input: sections, money, conditional field, repeater with spreadsheet
   const base = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
   t = makeApp({ ui: { openBrowser: false, lang: 'es' }, http: { allowedHosts: ['127.0.0.1'], allowInsecureLoopback: true } });
   const r = await t.app.blindInput({
-    title: "Precios USD — God's Nutrition",
+    title: "Precios USD — Acme Store",
     description: 'Lista de precios en dólares. Puedes pegar desde Excel/Sheets.',
     schema: {
       sections: [

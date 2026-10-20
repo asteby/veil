@@ -67,7 +67,7 @@ describe.skipIf(!dockerOk())('sql sink against a disposable Postgres (pgvector/p
     }
     psql('create table products (id serial primary key, sku text unique not null, name text, price_usd numeric(12,2) not null check (price_usd >= 0), active boolean default true, secret_note text)');
     t = makeApp({
-      databases: { gods: { psql: ['psql'], dsnSecret: 'local:pg_dsn', tables: { 'public.products': { columns: ['sku', 'name', 'price_usd', 'active'], conflict: ['sku'], returning: 'id' } }, maxRows: 100 } },
+      databases: { appdb: { psql: ['psql'], dsnSecret: 'local:pg_dsn', tables: { 'public.products': { columns: ['sku', 'name', 'price_usd', 'active'], conflict: ['sku'], returning: 'id' } }, maxRows: 100 } },
     });
     await t.app.vault.put('local', 'pg_dsn', `postgresql://postgres:${encodeURIComponent(PW)}@127.0.0.1:${port}/postgres`);
   }, 120_000);
@@ -78,7 +78,7 @@ describe.skipIf(!dockerOk())('sql sink against a disposable Postgres (pgvector/p
   });
 
   const schema = { fields: [{ name: 'rows', label: 'Products', kind: 'repeater', fields: [{ name: 'sku', label: 'SKU', required: true }, { name: 'name', label: 'Name' }, { name: 'price', label: 'USD', kind: 'money', currency: 'USD', required: true }, { name: 'active', label: 'Active', kind: 'boolean' }] }] };
-  const sink = (extra: Record<string, unknown> = {}) => ({ type: 'sql', database: 'gods', table: 'public.products', mode: 'upsert', rows: 'rows', columns: { sku: '${sku}', name: '${name}', price_usd: '${price}', active: '${active}' }, ...extra });
+  const sink = (extra: Record<string, unknown> = {}) => ({ type: 'sql', database: 'appdb', table: 'public.products', mode: 'upsert', rows: 'rows', columns: { sku: '${sku}', name: '${name}', price_usd: '${price}', active: '${active}' }, ...extra });
 
   async function fill(rows: Record<string, unknown>[], extra: Record<string, unknown> = {}) {
     const r = await t.app.blindInput({ title: 'Load', schema, sink: sink(extra) });
@@ -127,7 +127,7 @@ describe.skipIf(!dockerOk())('sql sink against a disposable Postgres (pgvector/p
   it('negative price fails the CHECK constraint (23514) and a non-allowlisted column is refused up front', async () => {
     const { w } = await fill([{ sku: 'NEG', price: { amount: '-1', currency: 'USD' } }]);
     expect(w).toMatchObject({ field_errors: [{ code: 'sql_23514' }] });
-    await expect(t.app.blindInput({ title: 'x', schema: { fields: [{ name: 'a', label: 'A' }] }, sink: { type: 'sql', database: 'gods', table: 'public.products', columns: { secret_note: '${a}' } } })).rejects.toThrow(/not allowed/);
-    await expect(t.app.blindInput({ title: 'x', schema: { fields: [{ name: 'a', label: 'A' }] }, sink: { type: 'sql', database: 'gods', table: 'pg_catalog.pg_authid', columns: { rolname: '${a}' } } })).rejects.toThrow(/not allowed/);
+    await expect(t.app.blindInput({ title: 'x', schema: { fields: [{ name: 'a', label: 'A' }] }, sink: { type: 'sql', database: 'appdb', table: 'public.products', columns: { secret_note: '${a}' } } })).rejects.toThrow(/not allowed/);
+    await expect(t.app.blindInput({ title: 'x', schema: { fields: [{ name: 'a', label: 'A' }] }, sink: { type: 'sql', database: 'appdb', table: 'pg_catalog.pg_authid', columns: { rolname: '${a}' } } })).rejects.toThrow(/not allowed/);
   });
 });

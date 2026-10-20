@@ -29,7 +29,7 @@ export const TargetSchema = z.discriminatedUnion('kind', [
     host: z.string().optional(),
     unit: z.string().regex(/^[A-Za-z0-9@_.-]+\.service$/),
     key: z.string().optional(),
-    env_file: z.string().optional().describe('default /etc/secret-intake/<unit>.env'),
+    env_file: z.string().optional().describe('default /etc/blindkey/<unit>.env'),
     restart: z.boolean().optional(),
   }),
   z.object({ kind: z.literal('github'), repo: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/), key: z.string().optional(), environment: z.string().optional() }),
@@ -46,7 +46,7 @@ const mutex = new KeyedMutex();
 
 export function targetPath(t: Target): string | undefined {
   if (t.kind === 'env-file' || t.kind === 'json' || t.kind === 'yaml') return t.path;
-  if (t.kind === 'systemd') return t.env_file ?? `/etc/secret-intake/${t.unit.replace(/\.service$/, '')}.env`;
+  if (t.kind === 'systemd') return t.env_file ?? `/etc/blindkey/${t.unit.replace(/\.service$/, '')}.env`;
   return undefined;
 }
 
@@ -203,9 +203,9 @@ export class TargetWriter {
   private async systemdDropIn(t: Extract<Target, { kind: 'systemd' }>): Promise<void> {
     const envFile = targetPath(t)!;
     const dropInDir = `/etc/systemd/system/${t.unit}.d`;
-    const content = `# Managed by secret-intake-mcp\n[Service]\nEnvironmentFile=${envFile}\n`;
+    const content = `# Managed by blindkey\n[Service]\nEnvironmentFile=${envFile}\n`;
     const io = this.io(t.host);
-    await io.writeAtomic(`${dropInDir}/50-secret-intake.conf`, content, { mode: '0644' });
+    await io.writeAtomic(`${dropInDir}/50-blindkey.conf`, content, { mode: '0644' });
     const cmds = ['systemctl daemon-reload', ...(t.restart ? [`systemctl restart ${shQuote(t.unit)}`] : [])].join(' && ');
     if (t.host) {
       const r = await this.ssh.script(t.host, cmds);

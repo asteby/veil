@@ -1,15 +1,15 @@
-# secret-intake-mcp
+# blindkey
 
 **Let an AI agent ask for, store and use credentials — without ever seeing them.**
 
 [Español](README.es.md) · [Threat model](THREAT-MODEL.md) · [Security policy](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-`secret-intake-mcp` is an open-source [Model Context Protocol](https://modelcontextprotocol.io) server (stdio, TypeScript). When the agent needs an API key, a password or any sensitive data, it sends **only metadata** (a form schema). A page served on `http://127.0.0.1` opens in your browser; you type the values there; they go straight to a destination you configured (OS keychain, encrypted file, `.env`, remote server over SSH, Vault/Infisical/1Password/OPS, an HTTP API, a Postgres table…). The agent only gets back `{request_id, status, stored:[names]}`.
+`blindkey` is an open-source [Model Context Protocol](https://modelcontextprotocol.io) server (stdio, TypeScript). When the agent needs an API key, a password or any sensitive data, it sends **only metadata** (a form schema). A page served on `http://127.0.0.1` opens in your browser; you type the values there; they go straight to a destination you configured (OS keychain, encrypted file, `.env`, remote server over SSH, Vault/Infisical/1Password/OPS, an HTTP API, a Postgres table…). The agent only gets back `{request_id, status, stored:[names]}`.
 
 Later the agent says `${secret:STRIPE_KEY}` and this server resolves it **inside its own process, at the moment of use**, after you approve the exact action on another local page.
 
 ```
- agent ──metadata──▶ secret-intake-mcp ──opens──▶ http://127.0.0.1:PORT/p/<one-time token>
+ agent ──metadata──▶ blindkey ──opens──▶ http://127.0.0.1:PORT/p/<one-time token>
    ▲                       │                                  │ you type values
    │  names / status       │◀──────────── values (local) ─────┘
    └───────────────────────┤
@@ -41,15 +41,15 @@ Requirements: Node ≥ 20.11. Linux needs `secret-tool` (package `libsecret-tool
 pnpm install && pnpm build
 
 # Claude Code
-claude mcp add secret-intake -- node /path/to/secret-intake-mcp/dist/cli.js
-# once published:  claude mcp add secret-intake -- npx -y secret-intake-mcp
+claude mcp add blindkey -- node /path/to/blindkey/dist/cli.js
+# once published:  claude mcp add blindkey -- npx -y blindkey
 ```
 
-Optional environment: `SECRET_INTAKE_HOME` (default `~/.config/secret-intake`), `SECRET_INTAKE_CONFIG`, `SECRET_INTAKE_AGENT` (label written to the audit log).
+Optional environment: `BLINDKEY_HOME` (default `~/.config/blindkey`), `BLINDKEY_CONFIG`, `BLINDKEY_AGENT` (label written to the audit log).
 
-Configuration is an **allowlist**: copy [`examples/config.example.json`](examples/config.example.json) to `~/.config/secret-intake/config.json` and keep only what you need. Without a config file there is one destination, `local` (OS keychain). Check it with `secret-intake-mcp check-config`.
+Configuration is an **allowlist**: copy [`examples/config.example.json`](examples/config.example.json) to `~/.config/blindkey/config.json` and keep only what you need. Without a config file there is one destination, `local` (OS keychain). Check it with `blindkey check-config`.
 
-Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's own tools access to what this server protects, e.g. `"deny": ["Read(~/.config/secret-intake/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
+Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's own tools access to what this server protects, e.g. `"deny": ["Read(~/.config/blindkey/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 
 ## Examples
 
@@ -63,15 +63,15 @@ Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's ow
 **Mercado Pago token to production `.env` over SSH:**
 
 ```json
-{"name":"MP_ACCESS_TOKEN","target":{"kind":"env-file","host":"godnutrition","path":"/etc/gods-store/gods-store.env","key":"MP_ACCESS_TOKEN"},"dry_run":true}
+{"name":"MP_ACCESS_TOKEN","target":{"kind":"env-file","host":"prod-vps","path":"/etc/myapp/myapp.env","key":"MP_ACCESS_TOKEN"},"dry_run":true}
 ```
 → `{changes:[{key:"MP_ACCESS_TOKEN", action:"updated"}]}`; without `dry_run`, after your approval, the server reads the remote file over SSH, changes only that key (comments and other keys kept), uploads it on stdin to a temp file, `chmod 0600`, optional `chown`/backup, and `mv` atomically. The model gets `{written:true, target, keys}`.
 
 **Capture the token from the Mercado Pago panel without the model seeing it:** `web_capture({site:"mercadopago", name:"MP_ACCESS_TOKEN", steps:[{wait:"text=Credenciales de producción", timeout_ms:600000},{click:"text=Mostrar"}], extract:{selector:"[data-testid=access-token]", regex:"(APP_USR-[\\w-]+)"}})` — a Chromium window owned by this server opens; **you** log in (password/2FA never touch the model); you can edit the steps on the approval page; the value goes DOM → store.
 
-**SSH key for a new VPS:** `ssh_key_provision({host:"godnutrition", alias:"gods_deploy", password:true})` → the page shows the host-key fingerprint to compare with your provider, asks the one-time root password, installs the public key, tests access. Then `ssh_exec({host:"godnutrition", command:"systemctl restart gods-store"})`.
+**SSH key for a new VPS:** `ssh_key_provision({host:"prod-vps", alias:"deploy_key", password:true})` → the page shows the host-key fingerprint to compare with your provider, asks the one-time root password, installs the public key, tests access. Then `ssh_exec({host:"prod-vps", command:"systemctl restart myapp"})`.
 
-**Batch of USD prices into Postgres:** `blind_input` with a repeater `rows:[sku, price(money USD)]` and sink `{type:"sql", database:"gods", table:"public.product_prices", mode:"upsert", rows:"rows", columns:{sku:"${sku}", price_usd:"${price}", list:"wholesale"}, dry_run:true}`. You paste the rows from a spreadsheet; values travel as `COPY … FROM STDIN` data into a typed temp table and `INSERT … SELECT` in one transaction; the model gets `{rows_validated: 120}` and then `{rows_written:120, ids:[…]}`.
+**Batch of USD prices into Postgres:** `blind_input` with a repeater `rows:[sku, price(money USD)]` and sink `{type:"sql", database:"appdb", table:"public.product_prices", mode:"upsert", rows:"rows", columns:{sku:"${sku}", price_usd:"${price}", list:"wholesale"}, dry_run:true}`. You paste the rows from a spreadsheet; values travel as `COPY … FROM STDIN` data into a typed temp table and `INSERT … SELECT` in one transaction; the model gets `{rows_validated: 120}` and then `{rows_written:120, ids:[…]}`.
 
 **Sensitive customer data:** `blind_input` with fields `name, email, rfc (pattern), phone` and an `http` sink to your CRM; the model receives only the created ids.
 
@@ -82,7 +82,7 @@ Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's ow
 3. You fill/approve. CSRF token + Origin/Host checks + strict nonce CSP; nothing third-party; no autocomplete.
 4. Values go to the destination from this process (stdin/env, never argv; never logged).
 5. Tool results are structural; a last-line scrub removes any handled value and its encodings.
-6. Every use is audited (hash-chained JSONL: session, agent, client, action, fingerprint, names). `secret-intake-mcp verify-audit` checks the chain.
+6. Every use is audited (hash-chained JSONL: session, agent, client, action, fingerprint, names). `blindkey verify-audit` checks the chain.
 
 Read [THREAT-MODEL.md](THREAT-MODEL.md) for what is **not** protected — notably: an approved command that exfiltrates the value, same-user malware, and **using another browser the model can see** (e.g. a browser extension the agent drives) to open a page that shows a secret.
 

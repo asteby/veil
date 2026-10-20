@@ -1,11 +1,11 @@
 {
-  "name": "secret-intake-mcp",
+  "name": "blindkey",
   "version": "0.1.0",
   "description": "MCP server that lets an AI agent request, store and use credentials without ever seeing their values.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "secret-intake-mcp": "dist/cli.js"
+    "blindkey": "dist/cli.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

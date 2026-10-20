@@ -39,7 +39,7 @@ describe('secret_request → store → secret_use (end to end, in process)', () 
   it('stores what the person typed and returns only names', async () => {
     t = makeApp();
     const { call, responses } = collect(t);
-    const r = await call(() => t.app.secretRequest({ title: 'Mercado Pago', fields: [{ name: 'MP_ACCESS_TOKEN', label: 'Access token' }, { name: 'MP_ENV', label: 'Env', kind: 'select', options: ['sandbox', 'production'] }], metadata: { project: 'gods', tags: ['payments'], rotate_after_days: 90 } }));
+    const r = await call(() => t.app.secretRequest({ title: 'Mercado Pago', fields: [{ name: 'MP_ACCESS_TOKEN', label: 'Access token' }, { name: 'MP_ENV', label: 'Env', kind: 'select', options: ['sandbox', 'production'] }], metadata: { project: 'appdb', tags: ['payments'], rotate_after_days: 90 } }));
     expect(r.status).toBe('awaiting_user');
     expect(String(r.url)).toMatch(/^http:\/\/127\.0\.0\.1:/);
     const VALUE = 'APP_USR-1234567890-abcdef-SECRET';
@@ -48,7 +48,7 @@ describe('secret_request → store → secret_use (end to end, in process)', () 
     const w = await call(() => t.app.secretWait({ id: r.request_id }));
     expect(w).toMatchObject({ status: 'completed', stored: ['MP_ACCESS_TOKEN', 'MP_ENV'] });
     expect(Object.keys(w).sort()).toEqual(['request_id', 'status', 'stored']);
-    expect(t.keychain.data.get('secret-intake-mcp/MP_ACCESS_TOKEN')).toBe(VALUE);
+    expect(t.keychain.data.get('blindkey/MP_ACCESS_TOKEN')).toBe(VALUE);
     const list = await call(() => t.app.secretList({}));
     expect((list.secrets as { name: string; project: string }[]).map((s) => s.name)).toEqual(['MP_ACCESS_TOKEN', 'MP_ENV']);
     const audit = readFileSync(path.join(t.home, 'audit.jsonl'), 'utf8');
@@ -272,10 +272,10 @@ describe('secret_write', () => {
   afterEach(async () => t?.cleanup());
 
   it('env-file: dry_run, allowlist, approval, created/updated, 0600, comments preserved, atomic', async () => {
-    t = makeApp({ writeTargets: [{ kind: 'env-file', path: '**/gods-store.env', keys: ['MP_*'] }] });
+    t = makeApp({ writeTargets: [{ kind: 'env-file', path: '**/myapp.env', keys: ['MP_*'] }] });
     const VALUE = 'APP_USR-"quoted" $dollar\nnewline';
     await t.app.vault.put('local', 'MP_ACCESS_TOKEN', VALUE);
-    const file = path.join(t.home, 'etc', 'gods-store.env');
+    const file = path.join(t.home, 'etc', 'myapp.env');
     await import('node:fs').then((fs) => {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, '# GOD\'S store\nPORT=3000\nMP_ACCESS_TOKEN=old\n', { mode: 0o644 });
@@ -293,13 +293,13 @@ describe('secret_write', () => {
     const w = await t.app.secretWait({ id: r.request_id });
     expect(w).toEqual({ request_id: r.request_id, status: 'completed', written: true, target: { kind: 'env-file', host: 'local', path: file }, keys: [{ key: 'MP_ACCESS_TOKEN', action: 'updated' }] });
     const content = readFileSync(file, 'utf8');
-    expect(content.startsWith("# GOD'S store\nPORT=3000\n")).toBe(true);
+    expect(content.startsWith("# Acme store\nPORT=3000\n")).toBe(true);
     expect(statSync(file).mode & 0o777).toBe(0o600);
     const { getEnvKey } = await import('../src/fileformats.js');
     expect(getEnvKey(content, 'MP_ACCESS_TOKEN')).toBe(VALUE);
     // remembered: direct
     expect(await t.app.secretWrite({ name: 'MP_ACCESS_TOKEN', target })).toMatchObject({ status: 'completed', approval: 'remembered' });
-    expect(readFileSync(path.dirname(file) + '/gods-store.env', 'utf8').match(/MP_ACCESS_TOKEN/g)).toHaveLength(1);
+    expect(readFileSync(path.dirname(file) + '/myapp.env', 'utf8').match(/MP_ACCESS_TOKEN/g)).toHaveLength(1);
   });
 
   it('json target by key path', async () => {
@@ -315,18 +315,18 @@ describe('secret_write', () => {
 
   it('github target uses gh with the value on stdin only', async () => {
     const calls: { argv: string[]; stdin?: string }[] = [];
-    t = makeApp({ writeTargets: [{ kind: 'github', repo: 'asteby/*' }] }, {
+    t = makeApp({ writeTargets: [{ kind: 'github', repo: 'acme/*' }] }, {
       runner: async (argv, o = {}) => {
         calls.push({ argv, stdin: o.stdin?.toString() });
         return { code: 0, signal: null, stdout: Buffer.from(argv[2] === 'list' ? 'OTHER\n' : ''), stderr: Buffer.alloc(0), stdoutTruncated: false, stderrTruncated: false, timedOut: false };
       },
     });
     await t.app.vault.put('local', 'MP_TOKEN', 'gh-secret-value-1');
-    const r = await t.app.secretWrite({ name: 'MP_TOKEN', target: { kind: 'github', repo: 'asteby/gods-store' } });
+    const r = await t.app.secretWrite({ name: 'MP_TOKEN', target: { kind: 'github', repo: 'acme/myapp' } });
     await approve(String(r.url));
     expect(await t.app.secretWait({ id: r.request_id })).toMatchObject({ written: true, keys: [{ key: 'MP_TOKEN', action: 'created' }] });
     const set = calls.find((c) => c.argv[2] === 'set')!;
-    expect(set.argv).toEqual(['gh', 'secret', 'set', 'MP_TOKEN', '--repo', 'asteby/gods-store']);
+    expect(set.argv).toEqual(['gh', 'secret', 'set', 'MP_TOKEN', '--repo', 'acme/myapp']);
     expect(set.stdin).toBe('gh-secret-value-1');
   });
 

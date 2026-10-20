@@ -77,10 +77,10 @@ describe.skipIf(!canRun)('SSH against a loopback sshd (non-root, key auth)', () 
     const w = await t.app.secretWait({ id: r.request_id });
     expect(w).toMatchObject({ status: 'completed', alias: 'deploy', host: 'loop', access_test: 'ok' });
     expect(String(w.public_key_fingerprint)).toMatch(/^SHA256:/);
-    const priv = t.keychain.data.get('secret-intake-mcp/ssh_key.deploy')!;
+    const priv = t.keychain.data.get('blindkey/ssh_key.deploy')!;
     expect(priv).toContain('OPENSSH PRIVATE KEY');
     expect(t.app.safe(w)).not.toContain(priv.split('\n')[1]!);
-    expect(readFileSync(authFile, 'utf8')).toContain('secret-intake:deploy');
+    expect(readFileSync(authFile, 'utf8')).toContain('blindkey:deploy');
     expect(existsSync(path.join(t.home, 'ssh', 'deploy'))).toBe(false); // no private key file on disk
   });
 
@@ -169,7 +169,7 @@ esac
       expect((await post(p, { action: 'submit', values: { trust_host: true, password: PW, confirm: true } })).json.ok).toBe(true);
       const w = await t.app.secretWait({ id: r.request_id });
       expect(w).toMatchObject({ status: 'completed', alias: 'vps_root', access_test: 'ok' });
-      expect(readFileSync(path.join(dir, 'installed'), 'utf8')).toContain('secret-intake:vps_root');
+      expect(readFileSync(path.join(dir, 'installed'), 'utf8')).toContain('blindkey:vps_root');
       const logged = readFileSync(log, 'utf8');
       expect(logged).not.toContain(PW); // never in argv/env of ssh
       expect(logged).toContain('SSH_ASKPASS_REQUIRE=force');
