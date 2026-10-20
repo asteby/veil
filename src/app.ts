@@ -18,6 +18,11 @@ import { UiServer, type PageSpec, type SubmitPayload, type SubmitResult } from '
 import { STRINGS, type Lang } from './ui/i18n.js';
 import { fingerprint, log, newId, UserError } from './util.js';
 import { Vault, type MetaInput } from './vault.js';
+import { agentSocketPath } from './crypto/keysource.js';
+import { EnvFiles } from './envenc/service.js';
+import { Shares } from './share/share.js';
+import { VaultSync } from './sync/service.js';
+import { VaultTools } from './vaulttools.js';
 import { checkWebPlan, Extractor, stepsLiteral, siteOf, WebRunner, WebStep, type WebStepT } from './web.js';
 
 // ------------------------------------------------------------------ tool input schemas
@@ -62,10 +67,14 @@ export const Inputs = {
   secret_list: z.object({ project: z.string().optional(), tag: z.string().optional(), destination: z.string().optional() }),
   secret_delete: z.object({ name: z.string(), destination: z.string().optional() }),
   secret_rotate: z.object({ name: z.string(), title: z.string().optional() }),
-  secret_use: z.object({ names: z.array(z.string()).optional() }).and(UseAction),
+  secret_use: z.object({ names: z.array(z.string()).optional(), env_file: z.object({ file: z.string(), keys: z.array(z.string()).optional() }).optional() }).and(UseAction),
   secret_write: z.object({
     name: z.string().optional(),
     names: z.array(z.string()).optional(),
+    from: z
+      .object({ kind: z.literal('env-enc'), file: z.string(), keys: z.array(z.string()).optional(), as_is: z.boolean().optional().describe('deploy the encrypted file unchanged (the key stays separate)') })
+      .optional()
+      .describe('take the values from an encrypted .env instead of the vault'),
     target: TargetSchema,
     keys: z.record(z.string(), z.string()).optional().describe('secret name → key in the target (default: the target key or the secret name)'),
     dry_run: z.boolean().optional(),
@@ -111,6 +120,12 @@ export interface AppDeps {
   openUrl?: (url: string) => Promise<boolean>;
   webLoader?: () => Promise<unknown>;
   agent?: string;
+  /** cheap KDF parameters (tests only) */
+  testKdf?: boolean;
+  /** clock for sync/share expiry (tests) */
+  now?: () => Date;
+  /** session agent socket; null disables it */
+  agentSocket?: string | null;
 }
 
 function defaultOpenUrl(url: string): Promise<boolean> {
@@ -143,6 +158,10 @@ export class App {
   readonly keys: SshKeys;
   readonly writer: TargetWriter;
   readonly web: WebRunner;
+  readonly sync: VaultSync;
+  readonly shares: Shares;
+  readonly envFiles: EnvFiles;
+  readonly tools: VaultTools;
   readonly session = newId('sess');
   elicitor?: Elicitor;
   private readonly openUrl: (url: string) => Promise<boolean>;
@@ -161,10 +180,25 @@ export class App {
     this.writer = new TargetWriter(this.cfg, this.ssh, this.runner);
     this.web = new WebRunner(this.cfg, this.vault, deps.webLoader);
     this.openUrl = deps.openUrl ?? defaultOpenUrl;
+    this.sync = new VaultSync({ cfg: this.cfg, paths: this.paths, vault: this.vault, ssh: this.ssh, runner: this.runner, keychain: this.vault.keychain, audit: this.audit, now: deps.now, testKdf: deps.testKdf });
+    this.shares = new Shares({ home: this.paths.home, target: (id) => this.sync.target(id), now: deps.now, testKdf: deps.testKdf, maxAttempts: this.cfg.env.maxAttempts });
+    this.envFiles = new EnvFiles({
+      home: this.paths.home,
+      keychain: this.vault.keychain,
+      keychainEntry: this.cfg.env.keychain,
+      keyFiles: this.cfg.env.keyFiles,
+      kdf: this.cfg.env.kdf,
+      maxAttempts: this.cfg.env.maxAttempts,
+      agentSocket: deps.agentSocket === null ? undefined : (deps.agentSocket ?? agentSocketPath(this.paths.home)),
+      testKdf: deps.testKdf,
+    });
+    this.tools = new VaultTools(this);
   }
 
   async shutdown(): Promise<void> {
     this.vault.clearCache();
+    this.sync.lock();
+    this.envFiles.lock();
     this.sensitive.clear();
     this.keys.stop();
     await this.ui.stop();
@@ -187,11 +221,11 @@ export class App {
     return { request_id: op.id, status: op.status, ...(op.result ?? {}) };
   }
 
-  private ttl(): number {
+  ttl(): number {
     return this.cfg.ui.ttlSeconds * 1000;
   }
 
-  private async present(op: Operation, url: string, message: string): Promise<SafeResult> {
+  async present(op: Operation, url: string, message: string): Promise<SafeResult> {
     op.url = url;
     if (this.elicitor?.supportsUrl()) {
       let action: string;
@@ -229,7 +263,7 @@ export class App {
     };
   }
 
-  private register(op: Operation, spec: Omit<PageSpec, 'opId' | 'ttlMs' | 'onExpire'>): Promise<{ url: string }> {
+  register(op: Operation, spec: Omit<PageSpec, 'opId' | 'ttlMs' | 'onExpire'>): Promise<{ url: string }> {
     return this.ui.register({
       ...spec,
       opId: op.id,
@@ -464,12 +498,12 @@ export class App {
     return { ...r, fingerprint: fp.slice(0, 16) };
   }
 
-  private errorResult(e: unknown): SafeResult {
+  errorResult(e: unknown): SafeResult {
     if (e instanceof UserError) return { error: e.code, message: this.sensitive.scrub(e.message) };
     return { error: 'internal', message: 'internal error (details withheld)' };
   }
 
-  private async preflight(refs: string[]): Promise<string[]> {
+  async preflight(refs: string[]): Promise<string[]> {
     const warnings: string[] = [];
     for (const r of refs) {
       const m = this.vault.meta(r);
@@ -483,13 +517,16 @@ export class App {
 
   async secretUse(raw: unknown): Promise<SafeResult> {
     const a = Inputs.secret_use.parse(raw);
-    const { names, ...rest } = a as typeof a & { names?: string[] };
+    const { names, env_file, ...rest } = a as typeof a & { names?: string[]; env_file?: { file: string; keys?: string[] } };
     const action = UseAction.parse(rest);
     const refs = actionSecretRefs(action);
-    if (!refs.length) throw new UserError('the action does not reference any ${secret:name}', 'invalid_args');
+    if (env_file && action.action !== 'exec') throw new UserError('env_file works with exec actions (variables go to the child environment)', 'invalid_args');
+    const envKeys = env_file ? (env_file.keys ?? this.tools.envKeys(env_file.file)) : [];
+    if (env_file) for (const k of envKeys) if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new UserError(`key ${k} cannot be an environment variable`, 'invalid_args');
+    if (!refs.length && !env_file) throw new UserError('the action does not reference any ${secret:name}', 'invalid_args');
     if (names && names.some((n) => !refs.includes(n))) throw new UserError('names lists secrets that the action does not use', 'invalid_args');
     const warnings = await this.preflight(refs);
-    const plan = actionPlan(action);
+    const plan = env_file ? { ...actionPlan(action), env_file: { file: path.resolve(env_file.file), keys: envKeys } } : actionPlan(action);
     const lang = this.cfg.ui.lang === 'es' ? 'es' : 'en';
     return this.withApproval(
       'secret_use',
@@ -497,20 +534,31 @@ export class App {
       {
         title: action.action === 'exec' ? 'Run a command with stored secrets' : 'Send an HTTP request with stored secrets',
         items: [
-          { label: 'secrets', value: refs.join(', ') },
+          { label: 'secrets', value: refs.join(', ') || '(none)' },
+          ...(env_file ? [{ label: 'encrypted .env (decrypted in memory, child env only)', value: `${path.resolve(env_file.file)}: ${envKeys.join(', ')}` }] : []),
           { label: 'action', value: action.action === 'exec' ? (action.shell ? 'exec (shell)' : 'exec (argv, no shell)') : 'http' },
           ...(action.action === 'exec' && action.cwd ? [{ label: 'cwd', value: action.cwd }] : []),
           { label: 'agent session', value: `${this.session}${process.env.VEILFORM_AGENT ? ` (${process.env.VEILFORM_AGENT})` : ''}` },
         ],
-        literal: actionLiteral(action),
+        literal: actionLiteral(action) + (env_file ? `\n+ env from ${path.resolve(env_file.file)}: ${envKeys.join(', ')}` : ''),
         warnings: actionWarnings(action, lang),
         rememberable: true,
       },
       async () => {
         const secrets = new Map<string, string>();
         for (const r of refs) secrets.set(r, (await this.vault.resolve(r)).value);
+        let act = action;
+        if (env_file && action.action === 'exec') {
+          const vals = await this.tools.envValues(env_file.file, envKeys);
+          const env = { ...(action.env ?? {}) };
+          for (const [k, v] of vals) {
+            secrets.set(`envfile:${k}`, v);
+            env[k] = `\${secret:envfile:${k}}`;
+          }
+          act = { ...action, env };
+        }
         const fp = fingerprint(plan);
-        const res = action.action === 'exec' ? await runExec(action, secrets, this.cfg, this.runner) : await runHttp(action, secrets, this.cfg);
+        const res = act.action === 'exec' ? await runExec(act, secrets, this.cfg, this.runner) : await runHttp(act, secrets, this.cfg);
         this.audit.write('secret_used', { action: action.action, secrets: refs, fingerprint: fp, exit_code: (res as { exit_code?: unknown }).exit_code, http_status: (res as { http_status?: unknown }).http_status });
         return { ...res, warnings: warnings.length ? warnings : undefined };
       },
@@ -519,6 +567,7 @@ export class App {
 
   async secretWrite(raw: unknown): Promise<SafeResult> {
     const a = Inputs.secret_write.parse(raw);
+    if (a.from) return this.secretWriteFromEnv(a as typeof a & { from: NonNullable<typeof a.from> });
     const names = a.names ?? (a.name ? [a.name] : []);
     if (!names.length) throw new UserError('name or names is required', 'invalid_args');
     const t: Target = a.target;
@@ -566,6 +615,44 @@ export class App {
         for (let i = 0; i < names.length; i++) entries.push({ key: keys[i]!, value: (await this.vault.resolve(names[i]!)).value });
         const changes = await this.writer.write(t, entries);
         this.audit.write('secret_written', { target, keys, names, fingerprint: fingerprint(plan) });
+        return { written: true, target, keys: changes };
+      },
+    );
+  }
+
+  /** secret_write with values from an encrypted .env (decrypted in memory) or the encrypted file as is. */
+  private async secretWriteFromEnv(a: z.infer<typeof Inputs.secret_write> & { from: { kind: 'env-enc'; file: string; keys?: string[]; as_is?: boolean } }): Promise<SafeResult> {
+    const t: Target = a.target;
+    const file = path.resolve(a.from.file);
+    const keys = a.from.keys ?? this.tools.envKeys(file);
+    const outKeys = keys.map((k) => a.keys?.[k] ?? k);
+    if (t.kind === 'clipboard' || t.kind === 'github' || t.kind === 'systemd' || t.kind === 'json' || t.kind === 'yaml') {
+      if (a.from.as_is) throw new UserError('as_is deploys only to env-file targets', 'invalid_args');
+    }
+    if (t.kind === 'clipboard') throw new UserError('use the local env_edit page to see values; clipboard is not supported from env files', 'invalid_args');
+    checkTargetAllowed(this.cfg, t, outKeys);
+    const target = describeTarget(t);
+    if (a.dry_run) return { dry_run: true, target, ...(a.from.as_is ? { deploy: 'encrypted file as is', keys } : { changes: await this.writer.plan(t, outKeys) }) };
+    const plan = { kind: 'secret_write', from: { file, keys, as_is: Boolean(a.from.as_is) }, target: t, keys: outKeys };
+    return this.withApproval(
+      'secret_write',
+      plan,
+      {
+        title: a.from.as_is ? 'Deploy an encrypted .env as is' : 'Copy values from an encrypted .env',
+        items: [{ label: 'from', value: file }, ...Object.entries(target).filter(([, v]) => v !== undefined).map(([k, v]) => ({ label: k, value: String(v) })), { label: 'keys', value: keys.map((k, i) => `${outKeys[i]} ← ${k}`).join('\n') }],
+        literal: a.from.as_is ? `copy ${file} (ciphertext, unchanged) → ${JSON.stringify(target)}\nthe decryption key is NOT copied` : `write ${JSON.stringify(target)}\n${keys.map((k, i) => `${outKeys[i]}=<value of ${k} from ${path.basename(file)}>`).join('\n')}`,
+        warnings: [],
+        rememberable: true,
+      },
+      async () => {
+        if (a.from.as_is) {
+          const r = await this.tools.deployEncrypted(file, t);
+          this.audit.write('env_deployed_encrypted', { file, target, keys: r.keys, fingerprint: fingerprint(plan) });
+          return { written: true, target, deployed: 'encrypted', bytes: r.bytes, keys: r.keys };
+        }
+        const vals = await this.tools.envValues(file, keys);
+        const changes = await this.writer.write(t, keys.map((k, i) => ({ key: outKeys[i]!, value: vals.get(k)! })));
+        this.audit.write('secret_written', { target, keys: outKeys, from: file, fingerprint: fingerprint(plan) });
         return { written: true, target, keys: changes };
       },
     );

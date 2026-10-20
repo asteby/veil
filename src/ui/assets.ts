@@ -71,6 +71,11 @@ pre.literal { background: var(--code-bg); border: 1px solid var(--border); borde
 .status.ok { background: var(--ok-bg); color: var(--ok); }
 .status.err { background: var(--danger-bg); color: var(--danger); }
 .banner { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 14px; margin-top: 12px; }
+.reveal { background: var(--warn-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin: 12px 0; }
+.reveal-item { margin: 10px 0; }
+.reveal-item .label { font-weight: 600; }
+code.secret-val { display: block; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 4px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+.reveal-item .actions { margin-top: 4px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 [hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -520,7 +525,15 @@ export const CLIENT_JS = String.raw`
     if (dest) form.appendChild(dest);
     var submit = el('button', { type: 'submit', class: 'primary', text: data.submitLabel || T.submit, disabled: data.preview ? true : null });
     var cancel = el('button', { type: 'button', text: T.cancel, disabled: data.preview ? true : null });
-    form.appendChild(el('div', { class: 'actions' }, [submit, cancel]));
+    var revealBtn = null;
+    if (data.revealLabel) {
+      revealBtn = el('button', { type: 'button', text: data.revealLabel });
+      revealBtn.addEventListener('click', function () {
+        revealBtn.disabled = true;
+        post({ action: 'reveal' }).then(function (res) { revealBtn.disabled = false; if (res.ok && res.reveal) showReveal(res.reveal, false); }, function () { revealBtn.disabled = false; });
+      });
+    }
+    form.appendChild(el('div', { class: 'actions' }, [submit, revealBtn, cancel]));
     form.appendChild(statusEl);
     cancel.addEventListener('click', function () {
       post({ action: 'cancel' }).then(function () { finish(T.cancelled, false); }, function () { finish(T.networkError, false); });
@@ -537,13 +550,61 @@ export const CLIENT_JS = String.raw`
       post({ action: 'submit', values: values, confirm: confirmNode ? confirmNode.input.checked : undefined, remember: confirmNode && confirmNode.remember ? confirmNode.remember.checked : false })
         .then(function (res) {
           submit.disabled = false;
-          if (res.ok) { values = null; finish(res.message || T.saved, true); }
+          if (res.ok) { values = null; if (res.reveal) showReveal(res.reveal, true); else finish(res.message || T.saved, true); }
           else if (res.errors) showErrors(res.errors);
           else finish(res.message || T.expired, false);
         }, function () { submit.disabled = false; statusEl.className = 'status err'; statusEl.textContent = T.networkError; });
     });
     root.appendChild(form);
     applyConditions();
+    // A share token travels in the URL FRAGMENT (never sent to any server). Copy it into its
+    // field and drop it from the address bar / history right away.
+    if (data.fragmentField && location.hash.length > 1 && fieldEls[data.fragmentField]) {
+      var ft = fieldEls[data.fragmentField].focusTarget;
+      try { ft.value = decodeURIComponent(location.hash.slice(1)); } catch (e) { ft.value = location.hash.slice(1); }
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function showReveal(r, terminal) {
+    var box = el('section', { class: 'reveal', 'aria-labelledby': 'rv-h' }, [el('h2', { id: 'rv-h', text: T.revealTitle })]);
+    if (r.note) box.appendChild(el('p', { class: 'desc', text: r.note }));
+    var vals = r.items.map(function (it) { return it.value; });
+    var mask = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+    r.items.forEach(function (it, i) {
+      var code = el('code', { class: 'secret-val', text: mask, 'aria-label': it.label });
+      var shown = false;
+      var tog = el('button', { type: 'button', 'aria-pressed': 'false', text: T.show });
+      tog.addEventListener('click', function () {
+        if (vals === null) return;
+        shown = !shown;
+        code.textContent = shown ? vals[i] : mask;
+        tog.textContent = shown ? T.hide : T.show;
+        tog.setAttribute('aria-pressed', shown ? 'true' : 'false');
+      });
+      var cp = el('button', { type: 'button', text: T.copy });
+      cp.addEventListener('click', function () {
+        if (vals === null) return;
+        navigator.clipboard.writeText(vals[i]).then(function () { cp.textContent = T.copiedShort; }, function () { cp.textContent = T.copyFailed; });
+      });
+      box.appendChild(el('div', { class: 'reveal-item' }, [el('div', { class: 'label', text: it.label }), code, el('div', { class: 'actions' }, [tog, cp])]));
+    });
+    var count = el('p', { class: 'meta', role: 'timer', 'aria-live': 'off' });
+    box.appendChild(count);
+    var left = r.hideAfter;
+    count.textContent = fmt(T.hidesIn, left);
+    r = null;
+    var timer = setInterval(function () {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(timer);
+        vals = null;
+        box.textContent = '';
+        box.appendChild(el('p', { class: 'status ok', role: 'status', text: T.revealHidden }));
+      } else count.textContent = fmt(T.hidesIn, left);
+    }, 1000);
+    if (terminal) { root.textContent = ''; root.appendChild(box); fileCache = {}; }
+    else root.insertBefore(box, root.firstChild);
   }
 
   function renderApproval() {

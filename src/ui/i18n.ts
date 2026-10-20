@@ -61,6 +61,19 @@ const en = {
   yes: 'Yes',
   no: 'No',
   verify: 'Verification code',
+  revealTitle: 'Only on this page',
+  hidesIn: 'Hidden again in {n} s. Nothing here reaches the AI agent.',
+  revealHidden: 'Values hidden. This single-use page cannot show them again.',
+  copiedShort: 'Copied',
+  copyFailed: 'Copy failed',
+  err_wrong: 'Wrong passphrase or token (attempts are limited).',
+  err_mismatch: 'The two passphrases do not match.',
+  err_weak: 'Too short.',
+  err_locked: 'Too many failed attempts. Try again later.',
+  err_gone: 'Not found: revoked, already consumed or never uploaded.',
+  err_expired: 'This share has expired.',
+  err_consumed: 'This share was already consumed.',
+  err_bad_token: 'This is not a veilform share token.',
 };
 
 const es: typeof en = {
@@ -124,6 +137,19 @@ const es: typeof en = {
   yes: 'Sí',
   no: 'No',
   verify: 'Código de verificación',
+  revealTitle: 'Solo en esta página',
+  hidesIn: 'Se ocultará de nuevo en {n} s. Nada de esto llega al agente de IA.',
+  revealHidden: 'Valores ocultos. Esta página de un solo uso no puede volver a mostrarlos.',
+  copiedShort: 'Copiado',
+  copyFailed: 'No se pudo copiar',
+  err_wrong: 'Passphrase o token incorrecto (los intentos son limitados).',
+  err_mismatch: 'Las dos passphrases no coinciden.',
+  err_weak: 'Demasiado corta.',
+  err_locked: 'Demasiados intentos fallidos. Inténtalo más tarde.',
+  err_gone: 'No encontrado: revocado, ya consumido o nunca subido.',
+  err_expired: 'Esta compartición caducó.',
+  err_consumed: 'Esta compartición ya fue consumida.',
+  err_bad_token: 'Esto no es un token de compartir de veilform.',
 };
 
 export const STRINGS: Record<Lang, typeof en> = { en, es };

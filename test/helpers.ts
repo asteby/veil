@@ -54,6 +54,8 @@ export function makeApp(cfg: Record<string, unknown> = {}, deps: Partial<AppDeps
       return false;
     },
     agent: 'test-agent',
+    testKdf: true,
+    agentSocket: null,
     ...deps,
   });
   return {

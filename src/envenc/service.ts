@@ -55,6 +55,8 @@ export class EnvFiles {
   readonly limiter: AttemptLimiter;
   /** in-process DEK cache (MCP server "unlock session") */
   private cache = new Map<string, { dek: Buffer; expires: number }>();
+  /** DEKs received through share tokens, by file context (verified against the MAC on use) */
+  private byContext = new Map<string, { dek: Buffer; expires: number }>();
 
   constructor(private readonly d: EnvDeps) {
     this.limiter = new AttemptLimiter(path.join(d.home, 'unlock-attempts.json'), d.maxAttempts ?? 5);
@@ -79,9 +81,14 @@ export class EnvFiles {
     this.cache.set(docCacheId(doc), { dek, expires: Date.now() + minutes * 60_000 });
   }
 
+  cacheDekByContext(context: string, dek: Buffer, minutes: number): void {
+    this.byContext.set(context, { dek, expires: Date.now() + minutes * 60_000 });
+  }
+
   lock(): void {
-    for (const v of this.cache.values()) v.dek.fill(0);
+    for (const v of [...this.cache.values(), ...this.byContext.values()]) v.dek.fill(0);
     this.cache.clear();
+    this.byContext.clear();
   }
 
   isUnlocked(doc: EnvDoc): boolean {
@@ -95,6 +102,14 @@ export class EnvFiles {
     if (opts.dek) return unlock(doc, { dek: opts.dek });
     const c = this.cache.get(id);
     if (c && c.expires > Date.now()) return { dek: c.dek, via: 'session' };
+    const bc = this.byContext.get(doc.context);
+    if (bc && bc.expires > Date.now()) {
+      try {
+        return { ...(await unlock(doc, { dek: bc.dek })), via: 'token' };
+      } catch {
+        /* other file with the same name */
+      }
+    }
     if (this.d.agentSocket) {
       const k = await agentGet(this.d.agentSocket, id);
       if (k) {
