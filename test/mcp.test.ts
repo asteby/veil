@@ -30,7 +30,7 @@ describe('MCP protocol surface', () => {
   let t: TestApp;
   afterEach(async () => t?.cleanup());
 
-  it('exposes 27 tools with object input schemas', async () => {
+  it('exposes 29 tools with object input schemas', async () => {
     t = makeApp();
     const { client } = await connect(t);
     const { tools } = await client.listTools();
@@ -38,6 +38,7 @@ describe('MCP protocol surface', () => {
       [
         'blind_input', 'blind_input_preview', 'secret_delete', 'secret_list', 'secret_request', 'secret_rotate', 'secret_use', 'secret_wait', 'secret_write', 'ssh_exec', 'ssh_key_provision', 'web_capture', 'web_login',
         'vault_export', 'vault_sync', 'vault_import', 'vault_rekey', 'share_create', 'share_list', 'share_revoke', 'share_import', 'env_status', 'env_unlock', 'env_encrypt', 'env_edit', 'env_diff', 'env_rotate',
+        'doctor', 'local_unlock',
       ].sort(),
     );
     for (const tool of tools) expect(tool.inputSchema.type).toBe('object');
