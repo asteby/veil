@@ -1,5 +1,6 @@
 import { KeychainError, type KeychainReason } from '../errors.js';
 import type { Runner, RunOptions, RunResult } from '../proc.js';
+import { keychainServiceAliases } from '../naming.js';
 import { UserError } from '../util.js';
 import type { PutResult, SecretStore } from './types.js';
 
@@ -47,7 +48,7 @@ export class SecretToolBackend implements KeychainBackend {
   constructor(private readonly runner: Runner) {}
 
   async set(service: string, account: string, value: string): Promise<void> {
-    const r = await runKeychainTool(this.runner, ['secret-tool', 'store', `--label=veilform: ${account}`, 'service', service, 'account', account], {
+    const r = await runKeychainTool(this.runner, ['secret-tool', 'store', `--label=Veil: ${account}`, 'service', service, 'account', account], {
       stdin: value,
       timeoutMs: 30_000,
     });
@@ -124,6 +125,33 @@ export function defaultKeychainBackend(runner: Runner): KeychainBackend {
       throw new KeychainError('OS keychain is not supported on this platform yet (Windows Credential Manager is planned)', 'keychain_unsupported', 'unsupported_os');
     },
     delete: async () => false,
+  };
+}
+
+/**
+ * Compatibility with the former product name: reads that miss under the configured service
+ * retry under its alias (`veilform` <-> `veil`), so secrets stored by either name keep being
+ * found whichever service is configured. Writes go to the configured service only; deletes
+ * clear both, so a deleted secret cannot reappear from the alias.
+ */
+export function withServiceAliases(b: KeychainBackend, aliases: (service: string) => string[] = keychainServiceAliases): KeychainBackend {
+  return {
+    name: b.name,
+    set: (service, account, value) => b.set(service, account, value),
+    async get(service, account) {
+      const v = await b.get(service, account);
+      if (v !== undefined) return v;
+      for (const alt of aliases(service)) {
+        const w = await b.get(alt, account);
+        if (w !== undefined) return w;
+      }
+      return undefined;
+    },
+    async delete(service, account) {
+      let deleted = await b.delete(service, account);
+      for (const alt of aliases(service)) deleted = (await b.delete(alt, account)) || deleted;
+      return deleted;
+    },
   };
 }
 

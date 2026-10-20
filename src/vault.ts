@@ -11,7 +11,8 @@ import type { Ssh } from './ssh.js';
 import { EncryptedFileStore } from './stores/encrypted-file.js';
 import { EnvFileStore, SshFileStore } from './stores/file-stores.js';
 import { HttpApiStore } from './stores/http-api.js';
-import { defaultKeychainBackend, KeychainStore, type KeychainBackend } from './stores/keychain.js';
+import { defaultKeychainBackend, KeychainStore, withServiceAliases, type KeychainBackend } from './stores/keychain.js';
+import { envByName } from './naming.js';
 import type { SecretStore } from './stores/types.js';
 import { assertName, expandHome, KeyedMutex, UserError } from './util.js';
 
@@ -83,7 +84,7 @@ export class Vault {
 
   constructor(private readonly d: VaultDeps) {
     this.now = d.now ?? (() => new Date());
-    this.keychain = d.keychainBackend ?? defaultKeychainBackend(d.runner);
+    this.keychain = withServiceAliases(d.keychainBackend ?? defaultKeychainBackend(d.runner));
     this.localVault = this.vaultAt(localVaultPath(d.cfg, d.paths));
     for (const [id, dc] of Object.entries(d.cfg.destinations)) this.stores.set(id, this.build(id, dc));
   }
@@ -129,7 +130,7 @@ export class Vault {
         if (key.source === 'master') return this.vaultAt(expandHome(dc.path)).storeFor(id);
         return new EncryptedFileStore(id, dc.path, async () => {
           if (key.source === 'env') {
-            const p = process.env[key.env];
+            const p = envByName(key.env);
             if (!p) throw new UserError(`environment variable ${key.env} (passphrase for ${id}) is not set`, 'missing_key');
             return { kind: 'passphrase', passphrase: p };
           }
