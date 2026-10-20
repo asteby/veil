@@ -561,6 +561,12 @@ export const CLIENT_JS = String.raw`
     if (a.warnings && a.warnings.length) {
       card.appendChild(el('div', { class: 'warnings', role: 'note' }, [el('strong', { text: T.warnings })].concat([el('ul', null, a.warnings.map(function (w) { return el('li', { text: w }); }))])));
     }
+    var edit = null;
+    if (a.editable) {
+      edit = el('textarea', noFill({ id: 'si-edit', rows: '10', class: 'literal' }));
+      edit.value = a.editable.value;
+      card.appendChild(el('div', { class: 'field' }, [el('label', { for: 'si-edit', text: a.editable.label }), edit]));
+    }
     var rem = null;
     if (a.rememberable) {
       rem = el('input', { type: 'checkbox', id: 'si-remember' });
@@ -572,8 +578,9 @@ export const CLIENT_JS = String.raw`
     card.appendChild(statusEl);
     ok.addEventListener('click', function () {
       ok.disabled = true; no.disabled = true;
-      post({ action: 'approve', remember: rem ? rem.checked : false }).then(function (res) {
+      post({ action: 'approve', remember: rem ? rem.checked : false, edited: edit ? edit.value : undefined }).then(function (res) {
         if (res.clipboard) return doClipboard(res.clipboard);
+        if (!res.ok && res.errors) { ok.disabled = false; no.disabled = false; statusEl.className = 'status err'; statusEl.textContent = T.err_type; return; }
         finish(res.ok ? (res.message || T.approved) : (res.message || T.expired), !!res.ok);
       }, function () { finish(T.networkError, false); });
     });

@@ -19,6 +19,8 @@ export interface ApprovalInfo {
   warnings?: string[];
   rememberable: boolean;
   approveLabel?: string;
+  /** Lets the person adjust a JSON document (e.g. web steps) before approving. */
+  editable?: { label: string; value: string };
 }
 
 export interface SubmitPayload {
@@ -26,6 +28,7 @@ export interface SubmitPayload {
   values?: Record<string, unknown>;
   remember?: boolean;
   confirm?: boolean;
+  edited?: string;
 }
 
 export type SubmitResult =
