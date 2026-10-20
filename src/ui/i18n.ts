@@ -2,6 +2,7 @@ export type Lang = 'en' | 'es';
 
 const en = {
   appName: 'Veil',
+  noScript: 'JavaScript is required for this local page.',
   localNotice: 'Local page served by Veil on this computer. Check that the address bar shows http://127.0.0.1. The AI agent cannot see what you type here.',
   requestId: 'Request',
   submit: 'Save securely',
@@ -18,6 +19,8 @@ const en = {
   row: 'Row',
   rows: 'rows',
   importCsv: 'Import CSV file',
+  chooseFile: 'Choose file',
+  noFileChosen: 'No file chosen',
   pasteLabel: 'Paste rows from a spreadsheet (tab or comma separated, first line may be headers)',
   pasteButton: 'Import pasted rows',
   importedRows: 'Imported {n} rows.',
@@ -96,6 +99,7 @@ const en = {
 
 const es: typeof en = {
   appName: 'Veil',
+  noScript: 'Esta página local necesita JavaScript.',
   localNotice: 'Página local servida por Veil en esta computadora. Verifica que la barra de direcciones muestre http://127.0.0.1. El agente de IA no puede ver lo que escribas aquí.',
   requestId: 'Solicitud',
   submit: 'Guardar de forma segura',
@@ -112,6 +116,8 @@ const es: typeof en = {
   row: 'Fila',
   rows: 'filas',
   importCsv: 'Importar archivo CSV',
+  chooseFile: 'Elegir archivo',
+  noFileChosen: 'Ningún archivo seleccionado',
   pasteLabel: 'Pega filas desde una hoja de cálculo (separadas por tabulador o coma; la primera línea puede ser de encabezados)',
   pasteButton: 'Importar filas pegadas',
   importedRows: 'Se importaron {n} filas.',
@@ -190,6 +196,13 @@ const es: typeof en = {
 
 export const STRINGS: Record<Lang, typeof en> = { en, es };
 export type Strings = typeof en;
+
+/** Text built by the server for a page: a plain string (same in both languages) or one per language. */
+export type Txt = string | { en: string; es: string };
+
+export function tr(v: Txt, lang: Lang): string {
+  return typeof v === 'string' ? v : v[lang];
+}
 
 /** Language from the process locale (VEIL_LANG, then LC_ALL / LC_MESSAGES / LANG). */
 export function localeLang(env: NodeJS.ProcessEnv = process.env): Lang {

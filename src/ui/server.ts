@@ -3,24 +3,24 @@ import type { AddressInfo } from 'node:net';
 import type { NormalizedSchema, FieldError } from '../schema.js';
 import { log, newId, randomToken, safeEqual } from '../util.js';
 import { CLIENT_JS, CSS } from './assets.js';
-import { pickLang, STRINGS, type Lang, type Strings } from './i18n.js';
+import { pickLang, STRINGS, tr, type Lang, type Strings, type Txt } from './i18n.js';
 
 export type PageKind = 'form' | 'approval' | 'preview' | 'clipboard';
 
 export interface DestinationInfo {
-  lines: { label: string; value: string }[];
+  lines: { label: Txt; value: string }[];
   needsConfirm: boolean;
   rememberable: boolean;
 }
 
 export interface ApprovalInfo {
-  items: { label: string; value: string }[];
+  items: { label: Txt; value: string }[];
   literal?: string;
-  warnings?: string[];
+  warnings?: Txt[];
   rememberable: boolean;
-  approveLabel?: string;
+  approveLabel?: Txt;
   /** Lets the person adjust a JSON document (e.g. web steps) before approving. */
-  editable?: { label: string; value: string };
+  editable?: { label: Txt; value: string };
 }
 
 export interface SubmitPayload {
@@ -68,17 +68,19 @@ export interface PageSpec {
   kind: PageKind;
   /** Operation id shown to the person so they can match it with the chat. */
   opId: string;
-  title: string;
-  description?: string;
-  schema?: NormalizedSchema;
+  /** server-built texts may be given per language ({en, es}); model-provided ones are plain strings */
+  title: Txt;
+  description?: Txt;
+  /** a server-built form may give one schema per language (same field names, translated labels) */
+  schema?: NormalizedSchema | Record<Lang, NormalizedSchema>;
   destination?: DestinationInfo;
   approval?: ApprovalInfo;
-  submitLabel?: string;
+  submitLabel?: Txt;
   clipboardSeconds?: number;
   /** form field filled from the URL fragment (#...) on load; the fragment is then removed from history */
   fragmentField?: string;
   /** label of a button that posts action 'reveal' (e.g. show current values) */
-  revealLabel?: string;
+  revealLabel?: Txt;
   ttlMs: number;
   handle(p: SubmitPayload, lang: Lang): Promise<SubmitResult>;
   onExpire?(): void;
@@ -326,18 +328,27 @@ export class UiServer {
 
   private pageHtml(page: Page, t: Strings, lang: Lang, nonce: string): string {
     const s = page.spec;
+    const title = tr(s.title, lang);
+    const description = s.description === undefined ? undefined : tr(s.description, lang);
+    const a = s.approval;
     const data = {
       kind: s.kind,
       preview: s.kind === 'preview',
       csrf: page.csrf,
       action: `/p/${page.token}/action`,
       strings: t,
-      schema: s.schema ?? { sections: [] },
-      destination: s.destination,
-      approval: s.approval,
-      submitLabel: s.submitLabel,
+      schema: !s.schema ? { sections: [] } : 'sections' in s.schema ? s.schema : s.schema[lang],
+      destination: s.destination && { ...s.destination, lines: s.destination.lines.map((l) => ({ label: tr(l.label, lang), value: l.value })) },
+      approval: a && {
+        ...a,
+        items: a.items.map((it) => ({ label: tr(it.label, lang), value: it.value })),
+        warnings: a.warnings?.map((w) => tr(w, lang)),
+        approveLabel: a.approveLabel === undefined ? undefined : tr(a.approveLabel, lang),
+        editable: a.editable && { label: tr(a.editable.label, lang), value: a.editable.value },
+      },
+      submitLabel: s.submitLabel === undefined ? undefined : tr(s.submitLabel, lang),
       fragmentField: s.fragmentField,
-      revealLabel: s.revealLabel,
+      revealLabel: s.revealLabel === undefined ? undefined : tr(s.revealLabel, lang),
     };
     const other = lang === 'es' ? 'en' : 'es';
     const heading = s.kind === 'approval' ? t.approvalTitle : s.kind === 'clipboard' ? t.clipboardTitle : '';
@@ -348,7 +359,7 @@ export class UiServer {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<title>${esc(s.title)} · ${esc(t.appName)}</title>
+<title>${esc(title)} · ${esc(t.appName)}</title>
 <style nonce="${nonce}">${CSS}</style>
 </head>
 <body>
@@ -360,14 +371,14 @@ export class UiServer {
 <p class="notice">${esc(t.localNotice)}</p>
 <div class="card">
   ${heading ? `<p class="meta">${esc(heading)}</p>` : ''}
-  <h1>${esc(s.title)}</h1>
-  ${s.description ? `<p class="desc">${esc(s.description)}</p>` : ''}
+  <h1>${esc(title)}</h1>
+  ${description ? `<p class="desc">${esc(description)}</p>` : ''}
   <p class="meta">${esc(t.requestId)}: <code>${esc(s.opId)}</code></p>
   ${s.kind === 'preview' ? `<p class="banner" role="note">${esc(t.previewBanner)}</p>` : ''}
   ${s.kind === 'approval' ? `<p>${esc(t.approvalIntro)}</p>` : ''}
   ${s.kind === 'clipboard' ? `<p>${esc(t.clipboardIntro.replace('{n}', String(s.clipboardSeconds ?? 30)))}</p>` : ''}
   <div id="app"></div>
-  <noscript><p class="status err">JavaScript is required for this local page.</p></noscript>
+  <noscript><p class="status err">${esc(t.noScript)}</p></noscript>
 </div>
 </main>
 <script type="application/json" id="si-data">${jsonForScript(data)}</script>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Txt } from './ui/i18n.js';
 import type { Config, DatabaseConfig } from './config.js';
 import { checkUrl, httpRequest } from './net.js';
 import type { Runner } from './proc.js';
@@ -82,7 +83,7 @@ export interface SinkPlan {
   /** Value-free plan (fingerprinted). */
   plan: Record<string, unknown>;
   /** Lines shown to the person on the form page. */
-  lines: { label: string; value: string }[];
+  lines: { label: Txt; value: string }[];
   /** true when the person must explicitly confirm (unless remembered). */
   requiresApproval: boolean;
   execute(values: Values, requestId: string, meta: MetaInput, opts?: PutOptions): Promise<SinkResult>;
@@ -147,7 +148,7 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         plan: { type: 'store', destinations: dests, names: scalar.map(nameOf) },
         lines: [
           ...stores.map((s) => ({ label: s.id, value: s.describe() })),
-          { label: 'names', value: scalar.map(nameOf).join(', ') },
+          { label: { en: 'names', es: 'nombres' }, value: scalar.map(nameOf).join(', ') },
         ],
         requiresApproval: false,
         async execute(values, _req, meta, opts) {
@@ -211,10 +212,10 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         type: sink.type,
         plan,
         lines: [
-          { label: 'request', value: `${method} ${url}` },
+          { label: { en: 'request', es: 'petición' }, value: `${method} ${url}` },
           ...Object.entries(headers).map(([k, v]) => ({ label: `header ${k}`, value: v })),
-          ...(sink.type === 'callback' ? [{ label: 'body', value: 'JSON with all form values' }] : body !== undefined ? [{ label: 'body', value: showTemplate(body) }] : []),
-          ...(each ? [{ label: 'each', value: `one request per row of ${each}` }] : []),
+          ...(sink.type === 'callback' ? [{ label: { en: 'body', es: 'cuerpo' }, value: 'JSON with all form values' }] : body !== undefined ? [{ label: { en: 'body', es: 'cuerpo' }, value: showTemplate(body) }] : []),
+          ...(each ? [{ label: { en: 'each', es: 'por cada' }, value: `one request per row of ${each}` }] : []),
         ],
         requiresApproval: true,
         async execute(values, requestId) {
@@ -279,10 +280,10 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         type: 'sql',
         plan,
         lines: [
-          { label: 'database', value: `${sink.database}${db.ssh ? ` (via ssh ${db.ssh})` : ''}` },
-          { label: 'statement', value: script.sqlPreview },
-          { label: 'columns', value: Object.entries(sink.columns).map(([c, t]) => `${c} ← ${t}`).join('\n') },
-          ...(sink.dry_run ? [{ label: 'dry run', value: 'validate and ROLLBACK (nothing is written)' }] : []),
+          { label: { en: 'database', es: 'base de datos' }, value: `${sink.database}${db.ssh ? ` (via ssh ${db.ssh})` : ''}` },
+          { label: { en: 'statement', es: 'sentencia' }, value: script.sqlPreview },
+          { label: { en: 'columns', es: 'columnas' }, value: Object.entries(sink.columns).map(([c, t]) => `${c} ← ${t}`).join('\n') },
+          ...(sink.dry_run ? [{ label: { en: 'dry run', es: 'simulación' }, value: 'validate and ROLLBACK (nothing is written)' }] : []),
         ],
         requiresApproval: true,
         async execute(values) {
@@ -307,7 +308,7 @@ export function planSink(sink: Sink, schema: NormalizedSchema, d: SinkDeps): Sin
         plan: { type: 'file', target: t, mapping: sink.mapping },
         lines: [
           ...Object.entries(describeTarget(t)).map(([k, v]) => ({ label: k, value: String(v) })),
-          { label: 'keys', value: Object.entries(sink.mapping).map(([f, k]) => `${k} ← ${f}`).join('\n') },
+          { label: { en: 'keys', es: 'claves' }, value: Object.entries(sink.mapping).map(([f, k]) => `${k} ← ${f}`).join('\n') },
         ],
         requiresApproval: true,
         async execute(values) {

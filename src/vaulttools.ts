@@ -17,7 +17,7 @@ import { parseDuration, parseToken, TOKEN_RE } from './share/share.js';
 import type { Strategy } from './sync/service.js';
 import { checkTargetAllowed, describeTarget, TargetSchema } from './targets.js';
 import type { RevealInfo, SubmitResult } from './ui/server.js';
-import { STRINGS } from './ui/i18n.js';
+import { STRINGS, type Lang } from './ui/i18n.js';
 import { expandHome, UserError } from './util.js';
 
 const StrategyS = z.enum(['report', 'keep-local', 'take-remote', 'keep-both']);
@@ -409,24 +409,27 @@ export class VaultTools {
     const needs = await this.needsPass(doc);
     const keys = doc.lines.filter((l) => l.t === 'kv').map((l) => (l as { key: string }).key);
     const fieldOf = new Map(keys.map((k, i) => [k, `k${i}`]));
-    const fields: FieldDef[] = [
-      ...(needs ? [passField('passphrase', `Passphrase for ${doc.context}`)] : []),
-      ...[...new Set(keys)].map((k): FieldDef => ({ name: fieldOf.get(k)!, label: k, kind: 'secret', required: false, help: 'leave empty to keep the current value' })),
-      { name: 'delete', label: 'Delete keys', kind: 'multiselect', required: false, options: [...new Set(keys)] },
-      { name: 'add', label: 'New keys', kind: 'repeater', required: false, fields: [{ name: 'key', label: 'Key', kind: 'text', pattern: '[A-Za-z_][A-Za-z0-9_.-]*' }, { name: 'value', label: 'Value', kind: 'secret' }] },
+    const es = (lang: Lang) => lang === 'es';
+    const fieldsFor = (lang: Lang): FieldDef[] => [
+      ...(needs ? [passField('passphrase', es(lang) ? `Passphrase de ${doc.context}` : `Passphrase for ${doc.context}`)] : []),
+      ...[...new Set(keys)].map((k): FieldDef => ({ name: fieldOf.get(k)!, label: k, kind: 'secret', required: false, help: es(lang) ? 'déjalo vacío para conservar el valor actual' : 'leave empty to keep the current value' })),
+      { name: 'delete', label: es(lang) ? 'Borrar claves' : 'Delete keys', kind: 'multiselect', required: false, options: [...new Set(keys)] },
+      { name: 'add', label: es(lang) ? 'Claves nuevas' : 'New keys', kind: 'repeater', required: false, fields: [{ name: 'key', label: es(lang) ? 'Clave' : 'Key', kind: 'text', pattern: '[A-Za-z_][A-Za-z0-9_.-]*' }, { name: 'value', label: es(lang) ? 'Valor' : 'Value', kind: 'secret' }] },
     ];
     const op = this.app.ops.create('env_edit', 'vf');
-    const schema = normalizeSchema({ fields });
+    // same field names in both languages: validation uses the English one
+    const schema = normalizeSchema({ fields: fieldsFor('en') });
+    const schemas = { en: schema, es: normalizeSchema({ fields: fieldsFor('es') }) };
     let fails = 0;
     const getDek = async (v: Record<string, unknown>) => (await this.app.envFiles.open(await this.app.envFiles.read(file), { passphrase: typeof v.passphrase === 'string' && v.passphrase ? async () => v.passphrase as string : undefined })).dek;
     const { url } = await this.app.register(op, {
       kind: 'form',
-      title: a.title ?? `Edit ${doc.context}`,
-      description: 'Values you type go straight into the encrypted file. The agent only learns which keys changed.',
-      schema,
-      destination: { lines: [{ label: 'file', value: file }], needsConfirm: false, rememberable: false },
-      revealLabel: needs ? undefined : 'Show current values (only here)',
-      submitLabel: 'Encrypt and save',
+      title: a.title ?? { en: `Edit ${doc.context}`, es: `Editar ${doc.context}` },
+      description: { en: 'Values you type go straight into the encrypted file. The agent only learns which keys changed.', es: 'Los valores que escribas van directo al archivo cifrado. El agente solo sabe qué claves cambiaron.' },
+      schema: schemas,
+      destination: { lines: [{ label: { en: 'file', es: 'archivo' }, value: file }], needsConfirm: false, rememberable: false },
+      revealLabel: needs ? undefined : { en: 'Show current values (only here)', es: 'Mostrar valores actuales (solo aquí)' },
+      submitLabel: { en: 'Encrypt and save', es: 'Cifrar y guardar' },
       handle: async (p, lang) => {
         const t = STRINGS[lang];
         if (p.action === 'cancel') {
@@ -440,7 +443,7 @@ export class VaultTools {
             this.app.audit.write('env_values_shown_locally', { op: op.id, file, keys: entries.map((e) => e.key) });
             return { ok: true, reveal: { items: entries.map((e) => ({ label: e.key, value: e.value })), hideAfter: 60 } };
           } catch {
-            return { ok: false, message: 'locked' };
+            return { ok: false, message: lang === 'es' ? 'El archivo está bloqueado: escribe la passphrase y guarda.' : 'The file is locked: type the passphrase and save.' };
           }
         }
         if (p.action !== 'submit') return { ok: false };

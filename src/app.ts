@@ -17,7 +17,7 @@ import { secretRefs, secretRefsDeep } from './templates.js';
 import { UiServer, type FallbackOffer, type PageFix, type PageSpec, type SubmitPayload, type SubmitResult } from './ui/server.js';
 import { fixOf, isKeychainFailure } from './errors.js';
 import { MIN_MASTER_LENGTH, type LocalVault } from './localvault.js';
-import { localeLang, STRINGS, type Lang } from './ui/i18n.js';
+import { localeLang, STRINGS, tr, type Lang, type Txt } from './ui/i18n.js';
 import { envVar } from './naming.js';
 import { fingerprint, log, newId, UserError } from './util.js';
 import { Vault, type MetaInput } from './vault.js';
@@ -586,7 +586,7 @@ export class App {
   private async withApproval(
     kind: string,
     plan: Record<string, unknown>,
-    page: { title: string; items: { label: string; value: string }[]; literal: string; warnings: string[]; rememberable: boolean; editable?: { label: string; value: string } },
+    page: { title: Txt; items: { label: Txt; value: string }[]; literal: string; warnings: Txt[]; rememberable: boolean; editable?: { label: Txt; value: string } },
     fn: (edited?: string) => Promise<SafeResult>,
     opts: { clipboard?: { seconds: number; value: () => Promise<string>; result: SafeResult } } = {},
   ): Promise<SafeResult> {
@@ -607,7 +607,7 @@ export class App {
     const { url } = await this.register(op, {
       kind: opts.clipboard ? 'clipboard' : 'approval',
       title: page.title,
-      approval: { items: [...page.items, { label: 'fingerprint', value: fp.slice(0, 16) }], literal: page.literal, warnings: page.warnings, rememberable: page.rememberable && !opts.clipboard, editable: page.editable },
+      approval: { items: [...page.items, { label: { en: 'fingerprint', es: 'huella' }, value: fp.slice(0, 16) }], literal: page.literal, warnings: page.warnings, rememberable: page.rememberable && !opts.clipboard, editable: page.editable },
       clipboardSeconds: opts.clipboard?.seconds,
       handle: async (p, lang) => {
         const t = STRINGS[lang];
@@ -640,7 +640,7 @@ export class App {
         return { ok: true, message: t.approved };
       },
     });
-    const r = await this.present(op, url, `Waiting for the person to approve: ${page.title}.`);
+    const r = await this.present(op, url, `Waiting for the person to approve: ${tr(page.title, 'en')}.`);
     return { ...r, fingerprint: fp.slice(0, 16) };
   }
 
@@ -673,21 +673,21 @@ export class App {
     if (names && names.some((n) => !refs.includes(n))) throw new UserError('names lists secrets that the action does not use', 'invalid_args');
     const warnings = await this.preflight(refs);
     const plan = env_file ? { ...actionPlan(action), env_file: { file: path.resolve(env_file.file), keys: envKeys } } : actionPlan(action);
-    const lang = this.cfg.ui.lang === 'es' ? 'es' : 'en';
+    const warnEs = actionWarnings(action, 'es');
     return this.withApproval(
       'secret_use',
       plan,
       {
-        title: action.action === 'exec' ? 'Run a command with stored secrets' : 'Send an HTTP request with stored secrets',
+        title: action.action === 'exec' ? { en: 'Run a command with stored secrets', es: 'Ejecutar un comando con secretos guardados' } : { en: 'Send an HTTP request with stored secrets', es: 'Enviar una petición HTTP con secretos guardados' },
         items: [
-          { label: 'secrets', value: refs.join(', ') || '(none)' },
-          ...(env_file ? [{ label: 'encrypted .env (decrypted in memory, child env only)', value: `${path.resolve(env_file.file)}: ${envKeys.join(', ')}` }] : []),
-          { label: 'action', value: action.action === 'exec' ? (action.shell ? 'exec (shell)' : 'exec (argv, no shell)') : 'http' },
+          { label: L.secrets, value: refs.join(', ') || '(none)' },
+          ...(env_file ? [{ label: { en: 'encrypted .env (decrypted in memory, child env only)', es: '.env cifrado (se descifra en memoria, solo en el entorno del hijo)' }, value: `${path.resolve(env_file.file)}: ${envKeys.join(', ')}` }] : []),
+          { label: { en: 'action', es: 'acción' }, value: action.action === 'exec' ? (action.shell ? 'exec (shell)' : 'exec (argv, no shell)') : 'http' },
           ...(action.action === 'exec' && action.cwd ? [{ label: 'cwd', value: action.cwd }] : []),
-          { label: 'agent session', value: `${this.session}${envVar('AGENT') ? ` (${envVar('AGENT')})` : ''}` },
+          { label: { en: 'agent session', es: 'sesión del agente' }, value: `${this.session}${envVar('AGENT') ? ` (${envVar('AGENT')})` : ''}` },
         ],
         literal: actionLiteral(action) + (env_file ? `\n+ env from ${path.resolve(env_file.file)}: ${envKeys.join(', ')}` : ''),
-        warnings: actionWarnings(action, lang),
+        warnings: actionWarnings(action, 'en').map((en, i) => ({ en, es: warnEs[i]! })),
         rememberable: true,
       },
       async () => {
@@ -734,7 +734,7 @@ export class App {
       return this.withApproval(
         'secret_write',
         { kind: 'clipboard', names },
-        { title: `Copy ${names[0]} to the clipboard`, items: [{ label: 'secret', value: names[0]! }], literal: `clipboard ← ${names[0]} (cleared after ${t.clear_after_seconds}s)`, warnings: [], rememberable: false },
+        { title: { en: `Copy ${names[0]} to the clipboard`, es: `Copiar ${names[0]} al portapapeles` }, items: [{ label: { en: 'secret', es: 'secreto' }, value: names[0]! }], literal: `clipboard ← ${names[0]} (cleared after ${t.clear_after_seconds}s)`, warnings: [], rememberable: false },
         async () => ({}),
         {
           clipboard: {
@@ -750,8 +750,8 @@ export class App {
       'secret_write',
       plan,
       {
-        title: 'Copy stored values to a file or service',
-        items: [...Object.entries(target).filter(([, v]) => v !== undefined).map(([k, v]) => ({ label: k, value: String(v) })), { label: 'keys', value: names.map((n, i) => `${keys[i]} ← ${n}`).join('\n') }],
+        title: { en: 'Copy stored values to a file or service', es: 'Copiar valores guardados a un archivo o servicio' },
+        items: [...Object.entries(target).filter(([, v]) => v !== undefined).map(([k, v]) => ({ label: k, value: String(v) })), { label: L.keys, value: names.map((n, i) => `${keys[i]} ← ${n}`).join('\n') }],
         literal: `write ${JSON.stringify(target)}\n${names.map((n, i) => `${keys[i]}=<value of ${n}>`).join('\n')}`,
         warnings: [],
         rememberable: true,
@@ -784,8 +784,8 @@ export class App {
       'secret_write',
       plan,
       {
-        title: a.from.as_is ? 'Deploy an encrypted .env as is' : 'Copy values from an encrypted .env',
-        items: [{ label: 'from', value: file }, ...Object.entries(target).filter(([, v]) => v !== undefined).map(([k, v]) => ({ label: k, value: String(v) })), { label: 'keys', value: keys.map((k, i) => `${outKeys[i]} ← ${k}`).join('\n') }],
+        title: a.from.as_is ? { en: 'Deploy an encrypted .env as is', es: 'Desplegar un .env cifrado tal cual' } : { en: 'Copy values from an encrypted .env', es: 'Copiar valores de un .env cifrado' },
+        items: [{ label: { en: 'from', es: 'origen' }, value: file }, ...Object.entries(target).filter(([, v]) => v !== undefined).map(([k, v]) => ({ label: k, value: String(v) })), { label: L.keys, value: keys.map((k, i) => `${outKeys[i]} ← ${k}`).join('\n') }],
         literal: a.from.as_is ? `copy ${file} (ciphertext, unchanged) → ${JSON.stringify(target)}\nthe decryption key is NOT copied` : `write ${JSON.stringify(target)}\n${keys.map((k, i) => `${outKeys[i]}=<value of ${k} from ${path.basename(file)}>`).join('\n')}`,
         warnings: [],
         rememberable: true,
@@ -828,16 +828,16 @@ export class App {
       'web_capture',
       plan,
       {
-        title: `Capture ${a.name} from ${a.site}`,
+        title: { en: `Capture ${a.name} from ${a.site}`, es: `Capturar ${a.name} de ${a.site}` },
         items: [
-          { label: 'site', value: `${a.site} (${site.origins.join(', ')})` },
-          { label: 'stores as', value: `${a.name} → ${store.describe()}` },
-          { label: 'browser', value: this.cfg.web.headless ? 'headless' : 'visible window owned by Veil (log in there yourself)' },
+          { label: L.site, value: `${a.site} (${site.origins.join(', ')})` },
+          { label: { en: 'stores as', es: 'se guarda como' }, value: `${a.name} → ${store.describe()}` },
+          { label: { en: 'browser', es: 'navegador' }, value: this.cfg.web.headless ? 'headless' : 'visible window owned by Veil (log in there yourself)' },
         ],
         literal: stepsLiteral(url, a.steps, a.extract),
         warnings: [],
         rememberable: true,
-        editable: { label: 'Steps (JSON, editable)', value: JSON.stringify(a.steps, null, 2) },
+        editable: { label: L.steps, value: JSON.stringify(a.steps, null, 2) },
       },
       async (edited) => {
         const steps = edited ? z.array(WebStep).parse(JSON.parse(edited)) : a.steps;
@@ -866,16 +866,16 @@ export class App {
       'web_login',
       plan,
       {
-        title: `Log in to ${a.site} with stored credentials`,
+        title: { en: `Log in to ${a.site} with stored credentials`, es: `Iniciar sesión en ${a.site} con credenciales guardadas` },
         items: [
-          { label: 'site', value: `${a.site} (${site.origins.join(', ')})` },
-          { label: 'secrets', value: refs.join(', ') || '(none)' },
-          { label: 'session', value: a.save_session ? `saved encrypted, ${this.cfg.web.sessionTtlHours} h` : 'not saved' },
+          { label: L.site, value: `${a.site} (${site.origins.join(', ')})` },
+          { label: L.secrets, value: refs.join(', ') || '(none)' },
+          { label: { en: 'session', es: 'sesión' }, value: a.save_session ? `saved encrypted, ${this.cfg.web.sessionTtlHours} h` : 'not saved' },
         ],
         literal: stepsLiteral(url, a.steps),
         warnings: [],
         rememberable: true,
-        editable: { label: 'Steps (JSON, editable)', value: JSON.stringify(a.steps, null, 2) },
+        editable: { label: L.steps, value: JSON.stringify(a.steps, null, 2) },
       },
       async (edited) => {
         const steps: WebStepT[] = edited ? z.array(WebStep).parse(JSON.parse(edited)) : a.steps;
@@ -955,8 +955,8 @@ export class App {
       'ssh_exec',
       plan,
       {
-        title: `Run a command on ${a.host}`,
-        items: [{ label: 'host', value: a.host }, { label: 'secrets', value: refs.join(', ') || '(none)' }],
+        title: { en: `Run a command on ${a.host}`, es: `Ejecutar un comando en ${a.host}` },
+        items: [{ label: 'host', value: a.host }, { label: L.secrets, value: refs.join(', ') || '(none)' }],
         literal: [...Object.entries(a.env ?? {}).map(([k, v]) => `export ${k}=${v}`), a.command].join('\n'),
         warnings: [],
         rememberable: true,
@@ -982,6 +982,14 @@ export class App {
     );
   }
 }
+
+/** Labels shared by several approval pages. */
+const L = {
+  secrets: { en: 'secrets', es: 'secretos' },
+  keys: { en: 'keys', es: 'claves' },
+  site: { en: 'site', es: 'sitio' },
+  steps: { en: 'Steps (JSON, editable)', es: 'Pasos (JSON, editable)' },
+} satisfies Record<string, Txt>;
 
 function pageHelp(e: unknown, lang: Lang): string | undefined {
   return fixOf(e).help?.[lang];
