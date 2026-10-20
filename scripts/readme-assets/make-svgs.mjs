@@ -39,7 +39,7 @@ const REDUCED = `.pk,.caret{opacity:0}@media (prefers-reduced-motion:reduce){*{a
 // ------------------------------------------------------------------ hero
 const HERO = {
   en: {
-    title: 'veilform: the agent asks, you type, the value goes straight to its destination',
+    title: 'Veil: the agent asks, you type, the value goes straight to its destination',
     colAgent: 'AI agent · sees metadata only',
     colYou: 'Your browser · 127.0.0.1',
     colDest: 'Destination',
@@ -57,7 +57,7 @@ const HERO = {
     wall: 'values never cross',
   },
   es: {
-    title: 'veilform: el agente pide, tú escribes, el valor va directo a su destino',
+    title: 'Veil: el agente pide, tú escribes, el valor va directo a su destino',
     colAgent: 'Agente de IA · solo ve metadatos',
     colYou: 'Tu navegador · 127.0.0.1',
     colDest: 'Destino',
@@ -232,8 +232,9 @@ ${REDUCED}</style>
     <rect x="${B.x}" y="${B.y}" width="${B.w}" height="${B.h}" rx="12" class="panel"/>
     <path d="M${B.x} ${B.y + 34}h${B.w}" class="edge"/>
     <circle cx="${B.x + 18}" cy="${B.y + 17}" r="5" fill="#ff5f57"/><circle cx="${B.x + 34}" cy="${B.y + 17}" r="5" fill="#febc2e"/><circle cx="${B.x + 50}" cy="${B.y + 17}" r="5" fill="#28c840"/>
-    <rect x="${B.x + 70}" y="${B.y + 8}" width="${B.w - 86}" height="18" rx="6" fill="var(--bg)"/>
+    <rect x="${B.x + 70}" y="${B.y + 8}" width="${B.w - 130}" height="18" rx="6" fill="var(--bg)"/>
     <text x="${B.x + 78}" y="${B.y + 21}" font-size="11" class="muted">127.0.0.1:41723/p/…</text>
+    <text x="${B.x + B.w - 16}" y="${B.y + 22}" font-size="12.5" font-weight="700" text-anchor="end" style="fill:var(--accent)">Veil</text>
     <text x="${B.x + 20}" y="${B.y + 64}" font-size="15" font-weight="700">${esc(s.winTitle)}</text>
     <g class="a f1"><text x="${B.x + 20}" y="${B.y + 100}" font-size="12.5" font-weight="600">${esc(s.f1)}</text>
       <rect x="${B.x + 20}" y="${B.y + 112}" width="${B.w - 40}" height="40" rx="8" class="field"/></g>
@@ -273,8 +274,8 @@ ${REDUCED}</style>
 // ------------------------------------------------------------- diagram
 const DIA = {
   en: {
-    title: 'Who sees what: the model, you, and the veilform MCP server',
-    lanes: ['What the model sees', 'What you see', 'What the MCP server does'],
+    title: 'Who sees what: the model, you, and the Veil MCP server',
+    lanes: ['What the model sees', 'What you see', 'What Veil (MCP server) does'],
     cols: ['1 · ask', '2 · type', '3 · store', '4 · use'],
     model: [['secret_request', 'schema: names, labels, rules'], ['nothing', 'waits on secret_wait'], ['{stored:["MP_…"]}', 'names + status only'], ['${secret:MP_…}', 'exit 0 · [REDACTED]']],
     you: [['local page opens', '127.0.0.1 · one-time link'], ['you type the value', 'secret field, no autofill'], ['"Saved" + destination', 'what goes where'], ['approve the literal', 'command / request']],
@@ -284,8 +285,8 @@ const DIA = {
     meta: 'schema',
   },
   es: {
-    title: 'Quién ve qué: el modelo, tú y el servidor MCP veilform',
-    lanes: ['Lo que ve el modelo', 'Lo que ves tú', 'Lo que hace el servidor MCP'],
+    title: 'Quién ve qué: el modelo, tú y el servidor MCP Veil',
+    lanes: ['Lo que ve el modelo', 'Lo que ves tú', 'Lo que hace Veil (servidor MCP)'],
     cols: ['1 · pide', '2 · escribes', '3 · guarda', '4 · usa'],
     model: [['secret_request', 'esquema: nombres, reglas'], ['nada', 'espera con secret_wait'], ['{stored:["MP_…"]}', 'solo nombres y estado'], ['${secret:MP_…}', 'exit 0 · [REDACTED]']],
     you: [['se abre la página local', '127.0.0.1 · enlace de un uso'], ['escribes el valor', 'campo secreto (••••)'], ['"Guardado" + destino', 'qué va a dónde'], ['apruebas lo literal', 'comando / petición']],
@@ -447,6 +448,10 @@ const ICONS = {
   write: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14h6M12 11l3 3-3 3"/>',
   stores: '<ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/><path d="M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/>',
   approve: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+  sync: '<path d="M19 8a7.5 7.5 0 0 0-13.4-1.6"/><path d="M5 3.5v3.2h3.2"/><path d="M5 16a7.5 7.5 0 0 0 13.4 1.6"/><path d="M19 20.5v-3.2h-3.2"/><rect x="9.2" y="10.6" width="5.6" height="4.6" rx="1"/><path d="M10.4 10.6V9.5a1.6 1.6 0 0 1 3.2 0v1.1"/>',
+  share: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  env: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><rect x="9" y="13" width="6" height="5" rx="1"/><path d="M10.3 13v-1.3a1.7 1.7 0 0 1 3.4 0V13"/>',
+  doctor: '<path d="M9 3h6v4H9z"/><path d="M15 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M8.5 14l2.2 2.2 4.8-4.8"/>',
 };
 function icon(body) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20"><style>svg{--c:#0969da}@media (prefers-color-scheme:dark){svg{--c:#4493f8}}*{fill:none;stroke:var(--c);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.f{fill:var(--c);stroke:none}</style>${body}</svg>\n`;

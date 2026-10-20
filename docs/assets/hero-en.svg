@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" width="960" height="440" role="img" aria-labelledby="t">
-<title id="t">veilform: the agent asks, you type, the value goes straight to its destination</title>
+<title id="t">Veil: the agent asks, you type, the value goes straight to its destination</title>
 <style>
 svg{--bg:#ffffff;--panel:#f6f8fa;--edge:#d0d7de;--text:#1f2328;--muted:#59636e;--accent:#0969da;--accentText:#ffffff;
 --ok:#1a7f37;--okBg:#dafbe1;--warn:#9a6700;--warnBg:#fff8c5;--bad:#cf222e;--badBg:#ffebe9;--field:#ffffff;--glass:#0969da;--value:#bf8700}
@@ -139,8 +139,9 @@ text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Aria
     <rect x="338" y="64" width="336" height="352" rx="12" class="panel"/>
     <path d="M338 98h336" class="edge"/>
     <circle cx="356" cy="81" r="5" fill="#ff5f57"/><circle cx="372" cy="81" r="5" fill="#febc2e"/><circle cx="388" cy="81" r="5" fill="#28c840"/>
-    <rect x="408" y="72" width="250" height="18" rx="6" fill="var(--bg)"/>
+    <rect x="408" y="72" width="206" height="18" rx="6" fill="var(--bg)"/>
     <text x="416" y="85" font-size="11" class="muted">127.0.0.1:41723/p/…</text>
+    <text x="658" y="86" font-size="12.5" font-weight="700" text-anchor="end" style="fill:var(--accent)">Veil</text>
     <text x="358" y="128" font-size="15" font-weight="700">Acme Store — payment credentials</text>
     <g class="a f1"><text x="358" y="164" font-size="12.5" font-weight="600">Access token</text>
       <rect x="358" y="176" width="296" height="40" rx="8" class="field"/></g>
