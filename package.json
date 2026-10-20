@@ -1,0 +1,59 @@
+{
+  "name": "secret-intake-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets an AI agent request, store and use credentials without ever seeing their values.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "secret-intake-mcp": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "README.es.md",
+    "THREAT-MODEL.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "secrets",
+    "credentials",
+    "ai-agent",
+    "security"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "25.9.9",
+    "eslint": "10.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vitest": "4.1.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "ignore@^7": "7.0.12",
+      "postcss@^8": "8.5.30"
+    }
+  }
+}
