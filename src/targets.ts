@@ -4,7 +4,8 @@ import { LocalFileIO, SshFileIO, type FileIO } from './fileio.js';
 import { getEnvKey, getJsonPath, setEnvKey, setJsonPath, setYamlPath, type WriteAction } from './fileformats.js';
 import type { Runner } from './proc.js';
 import type { Ssh } from './ssh.js';
-import { ENV_KEY_RE, globMatch, KeyedMutex, shQuote, UserError } from './util.js';
+import path from 'node:path';
+import { ENV_KEY_RE, expandHome, globMatch, KeyedMutex, shQuote, UserError } from './util.js';
 
 /**
  * Write targets: places where a stored value is COPIED (deployed) without the model
@@ -64,6 +65,8 @@ export function describeTarget(t: Target): Record<string, unknown> {
 }
 
 export function checkTargetAllowed(cfg: Config, t: Target, keys: string[]): void {
+  const tp = targetPath(t);
+  if (tp && (tp.split('/').includes('..') || !(tp.startsWith('/') || tp.startsWith('~/')))) throw new UserError('target path must be absolute and must not contain ".." segments', 'invalid_path');
   const ok = cfg.writeTargets.some((r: WriteTargetRule) => {
     const ruleKind = r.kind;
     if (ruleKind !== t.kind) return false;
@@ -72,8 +75,11 @@ export function checkTargetAllowed(cfg: Config, t: Target, keys: string[]): void
     const host = (t as { host?: string }).host;
     if ((r.host ?? undefined) !== (host ?? undefined)) return false;
     if (t.kind === 'systemd' && !(r.unit && globMatch(r.unit, t.unit))) return false;
-    const p = targetPath(t);
-    if (r.path && p && !globMatch(r.path, p)) return false;
+    const raw = targetPath(t);
+    // ~ is expanded for local targets only; remote paths are compared literally
+    const p = raw && !host ? path.resolve(expandHome(raw)) : raw;
+    const rulePath = r.path && !host ? expandHome(r.path) : r.path;
+    if (rulePath && p && !globMatch(rulePath, p)) return false;
     if (!r.path && t.kind !== 'systemd') return false;
     if (r.keys && !keys.every((k) => r.keys!.some((pat) => globMatch(pat, k)))) return false;
     return true;

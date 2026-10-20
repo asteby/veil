@@ -1,0 +1,67 @@
+{
+  "ui": { "lang": "auto", "openBrowser": true, "ttlSeconds": 600 },
+  "cacheTtlSeconds": 60,
+  "defaultDestination": "local",
+  "destinations": {
+    "local": { "type": "keychain", "service": "secret-intake-mcp" },
+    "vault": { "type": "encrypted-file", "path": "~/.config/secret-intake/data/secrets.enc", "key": { "source": "keychain" } },
+    "dev-dotenv": { "type": "env-file", "path": "~/projects/gods-store/.env" },
+    "prod-env": { "type": "env-file", "host": "godnutrition", "path": "/etc/gods-store/gods-store.env", "owner": "gods", "group": "gods", "backup": true },
+    "prod-files": { "type": "ssh-file", "host": "godnutrition", "path": "/etc/gods-store/secrets/{name}", "mode": "0640", "owner": "root", "group": "gods" },
+    "infisical": {
+      "type": "http-api", "adapter": "infisical", "baseUrl": "https://app.infisical.com",
+      "auth": { "tokenRef": "local:infisical_token", "scheme": "bearer" },
+      "options": { "workspaceId": "YOUR_WORKSPACE_ID", "environment": "prod", "secretPath": "/" }
+    },
+    "hashicorp": {
+      "type": "http-api", "adapter": "vault-kv2", "baseUrl": "https://vault.example.com",
+      "auth": { "tokenRef": "local:vault_token", "scheme": "header", "header": "X-Vault-Token" },
+      "options": { "mount": "secret", "field": "value", "pathPrefix": "gods/" }
+    },
+    "onepassword": {
+      "type": "http-api", "adapter": "1password-connect", "baseUrl": "https://op-connect.example.com",
+      "auth": { "tokenRef": "local:op_connect_token" },
+      "options": { "vaultId": "YOUR_VAULT_ID", "field": "credential" }
+    },
+    "ops-mercadopago": {
+      "type": "http-api", "adapter": "ops-addon-settings", "baseUrl": "https://panel.example.com",
+      "auth": { "tokenRef": "local:ops_token" },
+      "options": { "addon": "mercadopago", "keyMap": { "MP_ACCESS_TOKEN": "access_token" } }
+    }
+  },
+  "ssh": {
+    "hosts": {
+      "godnutrition": { "host": "panel.example.com", "user": "deploy", "keyAlias": "gods_deploy", "sudo": true }
+    }
+  },
+  "writeTargets": [
+    { "kind": "env-file", "host": "godnutrition", "path": "/etc/gods-store/*.env", "keys": ["MP_*", "STRIPE_*"] },
+    { "kind": "env-file", "path": "~/projects/**/.env" },
+    { "kind": "json", "path": "~/projects/**/config/*.json" },
+    { "kind": "systemd", "host": "godnutrition", "unit": "gods-store.service", "keys": ["MP_*"] },
+    { "kind": "github", "repo": "your-org/*", "keys": ["MP_*", "STRIPE_*"] },
+    { "kind": "clipboard" }
+  ],
+  "http": { "allowedHosts": ["api.stripe.com", "api.mercadopago.com"] },
+  "exec": { "defaultTimeoutMs": 60000, "maxOutputBytes": 65536, "allowShell": true, "redactEnvFiles": ["~/projects/gods-store/.env"] },
+  "databases": {
+    "gods": {
+      "ssh": "godnutrition",
+      "psql": ["sudo", "-u", "postgres", "psql", "-d", "gods"],
+      "tables": {
+        "public.product_prices": { "columns": ["sku", "price_usd", "list"], "conflict": ["sku", "list"], "returning": "id" },
+        "public.customers": { "columns": ["name", "email", "phone", "rfc"], "returning": "id" }
+      },
+      "maxRows": 5000
+    }
+  },
+  "web": {
+    "headless": false,
+    "sessionTtlHours": 12,
+    "sites": {
+      "mercadopago": { "origins": ["https://www.mercadopago.com.mx", "https://*.mercadopago.com.mx", "https://www.mercadolibre.com"], "startUrl": "https://www.mercadopago.com.mx/developers/panel/app" },
+      "stripe": { "origins": ["https://dashboard.stripe.com"], "startUrl": "https://dashboard.stripe.com/apikeys" }
+    }
+  },
+  "ops": { "baseUrl": "https://panel.example.com", "tokenRef": "local:ops_token" }
+}
