@@ -109,13 +109,13 @@ test('env_edit page (Spanish): keys listed, current values only on request, re-e
   await expect(page.getByRole('textbox', { name: 'MP_ACCESS_TOKEN' })).toHaveAttribute('type', 'password');
   await expect(page.locator('body')).not.toContainText('APP_USR-111-222');
   await shot(page, 'env-01-edit-form-es');
-  await page.getByRole('button', { name: 'Show current values (only here)' }).click();
+  await page.getByRole('button', { name: 'Mostrar valores actuales (solo aquí)' }).click();
   await expect(page.getByRole('heading', { name: 'Solo en esta página' })).toBeVisible();
   await page.locator('.reveal-item', { hasText: 'MP_ACCESS_TOKEN' }).getByRole('button', { name: 'Mostrar' }).click();
   await expect(page.locator('.reveal-item', { hasText: 'MP_ACCESS_TOKEN' }).locator('code')).toHaveText('APP_USR-111-222');
   await shot(page, 'env-02-edit-reveal-es');
   await page.getByRole('textbox', { name: 'MP_ACCESS_TOKEN' }).fill('APP_USR-333-444-rotated');
-  await page.getByRole('button', { name: 'Encrypt and save' }).click();
+  await page.getByRole('button', { name: 'Cifrar y guardar' }).click();
   await expect(page.getByRole('status')).toContainText('Guardado');
   await shot(page, 'env-03-edit-saved-es');
   const w = await t.app.secretWait({ id: r.request_id });
