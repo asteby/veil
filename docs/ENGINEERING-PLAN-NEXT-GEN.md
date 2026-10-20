@@ -1,6 +1,8 @@
 # Plan de ingeniería de siguiente generación — Veil
 
-> **Estado:** borrador de diseño para revisión del dueño. Solo diseño: nada de esto está implementado.
+> **Estado (2026-10-20, rama `integracion/veil`):** el renombrado de §2.2 ya se aplicó con compatibilidad (paquete `@asteby/veil`, comando `veil`, `VEIL_*`, `~/.config/veil`; se conservan las constantes de formato y se leen los nombres anteriores; ver CHANGELOG 0.2.0) y los prefijos de `.env` de la spec §10.2 están implementados. El resto del plan sigue siendo diseño, sin implementar.
+
+> **Estado:** borrador de diseño para revisión del dueño. Solo diseño: salvo lo indicado arriba, nada de esto está implementado.
 > **Base:** `main` @ `6aa8c88` (veilform 0.1.0, sin publicar en npm). Rama: `docs/engineering-plan`.
 > **Fecha:** 2026-10-19.
 > **Nombre:** "Veil" es una **propuesta**; el dueño no lo ha confirmado. Donde el renombrado tiene impacto se marca con **[RENOMBRE]**. Donde un dato de un proyecto externo no está verificado se marca con **(verificar)**.

