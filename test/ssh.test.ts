@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -179,6 +179,32 @@ esac
     } finally {
       sshd.kill();
       await t.cleanup();
+    }
+  });
+});
+
+describe('autoMode: ssh hosts from ~/.ssh/config', () => {
+  it('allows a literal Host of ~/.ssh/config only while autoMode is on; never wildcards or unknown names', async () => {
+    const home = tmpDir('si-sshcfg-');
+    mkdirSync(path.join(home, '.ssh'));
+    writeFileSync(path.join(home, '.ssh', 'config'), 'Host *\n  ServerAliveInterval 30\nHost miserver otro\n  User ubuntu\n');
+    const prev = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const on = makeApp({ autoMode: { enabled: true } });
+      expect(() => on.app.ssh.hostConfig('miserver')).not.toThrow();
+      expect(() => on.app.ssh.hostConfig('otro')).not.toThrow();
+      expect(() => on.app.ssh.hostConfig('evil.example.com')).toThrow(/allowlist/);
+      expect(() => on.app.ssh.hostConfig('*')).toThrow(/allowlist/);
+      await on.cleanup();
+      const off = makeApp({});
+      expect(() => off.app.ssh.hostConfig('miserver')).toThrow(/allowlist/);
+      await off.cleanup();
+      const noFlag = makeApp({ autoMode: { enabled: true, sshConfigHosts: false } });
+      expect(() => noFlag.app.ssh.hostConfig('miserver')).toThrow(/allowlist/);
+      await noFlag.cleanup();
+    } finally {
+      process.env.HOME = prev;
     }
   });
 });

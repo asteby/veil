@@ -138,6 +138,21 @@ export const ConfigSchema = z.object({
       blockSeconds: z.number().int().min(0).max(600).default(0),
     })
     .default({ lang: 'auto', openBrowser: true, ttlSeconds: 600, blockSeconds: 0 }),
+  /**
+   * Auto mode: the listed operations run without an approval page once their secrets are stored.
+   * Forms that FILL values (secret_request, blind_input, ssh_key_provision) and clipboard writes
+   * always ask. Only the person can turn this on (this file); the agent has no tool to change it.
+   */
+  autoMode: z
+    .object({
+      enabled: z.boolean().default(false),
+      kinds: z.array(z.enum(['secret_use', 'ssh_exec', 'secret_write', 'web_capture'])).default(['secret_use', 'ssh_exec', 'secret_write']),
+      /** ISO date-time after which auto mode switches itself off (recommended). */
+      until: z.string().datetime({ offset: true }).optional(),
+      /** While on, `Host <name>` entries of ~/.ssh/config (the person's own list) also count as ssh.hosts. */
+      sshConfigHosts: z.boolean().default(true),
+    })
+    .default({ enabled: false, kinds: ['secret_use', 'ssh_exec', 'secret_write'], sshConfigHosts: true }),
   cacheTtlSeconds: z.number().int().min(0).max(3600).default(60),
   defaultDestination: z.string().default('local'),
   destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: DEFAULT_KEYCHAIN_SERVICE, fallback: 'ask' } }),

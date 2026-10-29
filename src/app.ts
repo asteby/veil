@@ -582,7 +582,14 @@ export class App {
     });
   }
 
-  /** Runs `fn` after approval (or immediately if this exact fingerprint was remembered). */
+  /** True while config.autoMode is on, not past `until`, and lists this operation kind. */
+  private autoModeCovers(kind: string): boolean {
+    const m = this.cfg.autoMode;
+    if (!m.enabled || !(m.kinds as string[]).includes(kind)) return false;
+    return !m.until || Date.parse(m.until) > Date.now();
+  }
+
+  /** Runs `fn` after approval (or immediately if auto mode covers it or this exact fingerprint was remembered). */
   private async withApproval(
     kind: string,
     plan: Record<string, unknown>,
@@ -591,8 +598,9 @@ export class App {
     opts: { clipboard?: { seconds: number; value: () => Promise<string>; result: SafeResult } } = {},
   ): Promise<SafeResult> {
     const fp = fingerprint(plan);
-    if (page.rememberable && !opts.clipboard && this.approvals.isApproved(fp)) {
-      this.audit.write('use_approved', { kind, fingerprint: fp, via: 'remembered' });
+    const auto = page.rememberable && !opts.clipboard && this.autoModeCovers(kind);
+    if (page.rememberable && !opts.clipboard && (auto || this.approvals.isApproved(fp))) {
+      this.audit.write('use_approved', { kind, fingerprint: fp, via: auto ? 'auto' : 'remembered' });
       const op = this.ops.create(kind, 'use');
       try {
         const res = await fn();
@@ -600,7 +608,7 @@ export class App {
       } catch (e) {
         this.ops.finish(op.id, 'failed', this.errorResult(e));
       }
-      return { ...this.opResult(op), fingerprint: fp.slice(0, 16), approval: 'remembered' };
+      return { ...this.opResult(op), fingerprint: fp.slice(0, 16), approval: auto ? 'auto' : 'remembered' };
     }
     const op = this.ops.create(kind, 'use');
     this.audit.write('approval_requested', { op: op.id, kind, fingerprint: fp });

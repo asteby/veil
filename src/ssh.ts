@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import type { Config, SshHostConfig } from './config.js';
 import type { RunOptions, RunResult, Runner } from './proc.js';
@@ -28,9 +28,24 @@ export class Ssh {
   ) {}
 
   hostConfig(hostKey: string): SshHostConfig {
-    const h = this.cfg.ssh.hosts[hostKey];
+    const h = this.cfg.ssh.hosts[hostKey] ?? (this.autoSshConfigHost(hostKey) ? {} : undefined);
     if (!h) throw new UserError(`ssh host "${hostKey}" is not in the ssh.hosts allowlist`, 'host_not_allowed');
-    return h;
+    return { sudo: false, ...h };
+  }
+
+  /** Auto mode: a literal `Host <name>` of the person's ~/.ssh/config is allowed without editing ssh.hosts. */
+  private autoSshConfigHost(hostKey: string): boolean {
+    const m = this.cfg.autoMode;
+    if (!m.enabled || !m.sshConfigHosts || (m.until && Date.parse(m.until) <= Date.now())) return false;
+    if (!/^[A-Za-z0-9._-]+$/.test(hostKey)) return false;
+    const file = path.join(process.env.HOME ?? '', '.ssh', 'config');
+    if (!existsSync(file)) return false;
+    return readFileSync(file, 'utf8')
+      .split('\n')
+      .some((l) => {
+        const names = /^\s*Host\s+(.+?)\s*$/i.exec(l)?.[1];
+        return Boolean(names?.split(/\s+/).includes(hostKey));
+      });
   }
 
   async baseArgv(hostKey: string, extraOpts: string[] = []): Promise<{ argv: string[]; env: NodeJS.ProcessEnv }> {
