@@ -140,6 +140,39 @@ describe('secret_request → store → secret_use (end to end, in process)', () 
   });
 });
 
+describe('autoMode', () => {
+  let t: TestApp;
+  afterEach(async () => {
+    await t?.cleanup();
+  });
+  const run = (n: number) => ({ action: 'exec', command: [process.execPath, '-e', `console.log(${n}, process.env.TOK.length)`], env: { TOK: '${secret:API_KEY}' } });
+
+  it('runs different secret_use commands without an approval page, and audits via=auto', async () => {
+    t = makeApp({ autoMode: { enabled: true } });
+    await t.app.vault.put('local', 'API_KEY', 'tok_live_auto_1');
+    const r1 = await t.app.secretUse(run(1));
+    const r2 = await t.app.secretUse(run(2));
+    expect(r1).toMatchObject({ status: 'completed', approval: 'auto' });
+    expect(r2).toMatchObject({ status: 'completed', approval: 'auto' });
+    expect(readFileSync(path.join(t.home, 'audit.jsonl'), 'utf8')).toContain('"via":"auto"');
+  });
+
+  it('still asks when disabled, expired, or the kind is not listed', async () => {
+    for (const autoMode of [{ enabled: false }, { enabled: true, until: '2020-01-01T00:00:00Z' }, { enabled: true, kinds: ['ssh_exec'] }]) {
+      t = makeApp({ autoMode });
+      await t.app.vault.put('local', 'API_KEY', 'tok_live_auto_2');
+      expect((await t.app.secretUse(run(3))).status).toBe('awaiting_user');
+      await t.cleanup();
+    }
+  });
+
+  it('never skips the forms that fill values', async () => {
+    t = makeApp({ autoMode: { enabled: true } });
+    const r = await t.app.secretRequest({ title: 'x', fields: [{ name: 'A', label: 'A' }] });
+    expect(r.status).toBe('awaiting_user');
+  });
+});
+
 describe('property: no tool response, log or audit line ever contains a submitted value', () => {
   it('random secrets through request → use(exec, many encodings) → write → list', async () => {
     const rnd = prng(2026);
