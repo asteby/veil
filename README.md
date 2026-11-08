@@ -147,7 +147,7 @@ When the default destination is the keychain and it fails during a `secret_reque
 
 ## Troubleshooting
 
-Run `veil doctor` (or the read-only MCP tool `doctor`; `--json` for machines). It checks Node/crypto (argon2id), the keychain backend (secret-tool, D-Bus session, Secret Service provider and whether the default keyring is unlocked on Linux; `security` on macOS; on Windows the Credential Manager backend is planned and the encrypted store is used), the default destination, the encrypted store and session agent, permissions of `~/.config/veil`, and ssh/git/gh/psql/Chromium for the features that use them. Every problem lists its impact and the exact command for your distribution (apt, dnf, pacman, zypper, apk, brew, winget). It runs nothing privileged and asks for nothing secret.
+Run `veil doctor` (or the read-only MCP tool `doctor`; `--json` for machines). It checks Node/crypto (argon2id), the keychain backend (secret-tool, D-Bus session, Secret Service provider and whether the default keyring is unlocked on Linux; `security` on macOS; Credential Manager through PowerShell on Windows), the default destination, the encrypted store and session agent, permissions of `~/.config/veil`, and ssh/git/gh/psql/Chromium for the features that use them. Every problem lists its impact and the exact command for your distribution (apt, dnf, pacman, zypper, apk, brew, winget). It runs nothing privileged and asks for nothing secret.
 
 Errors are structured — `{error, code, help:{en,es}, fix:{en,es,command, alternative}}` — in MCP responses, and translated on the local page:
 
@@ -155,7 +155,7 @@ Errors are structured — `{error, code, help:{en,es}, fix:{en,es,command, alter
 |---|---|---|
 | `keychain_unavailable` | `secret-tool` not installed (`reason: missing_tool`), no D-Bus session (`no_dbus`, SSH/headless) or no Secret Service (`no_service`) | `sudo apt install -y libsecret-tools` (or dnf/pacman/…), `dbus-run-session -- $SHELL`, `gnome-keyring-daemon --start --components=secrets` — or `veil init` |
 | `keychain_locked` | the keyring is locked / waiting for an unlock prompt | unlock "Login" in Passwords and Keys (`seahorse`); macOS: `security unlock-keychain` |
-| `keychain_unsupported` | no keychain backend on this OS yet (Windows) | `veil init` (encrypted store) |
+| `keychain_unsupported` | no keychain backend on this OS (not Linux, macOS or Windows) | `veil init` (encrypted store) |
 | `passphrase_required` | the encrypted store is locked | MCP `local_unlock` or `veil unlock` |
 | `master_password_not_set` | the encrypted store has no master password yet | define it on the local page (`veil unlock`) |
 | `destination_not_configured` | the destination is not in `config.json` | `veil init` or add it |

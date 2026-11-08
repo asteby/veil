@@ -8,8 +8,8 @@ import type { PutResult, SecretStore } from './types.js';
  * OS keychain through the platform CLI, so no native addon is required:
  *  - Linux: `secret-tool` (libsecret / GNOME Keyring / KWallet via Secret Service)
  *  - macOS: `security` (the value is passed on stdin to `security -i`, never argv)
- * Windows is not supported yet (Credential Manager is planned); Veil falls back to its own
- * encrypted store (see LocalVault).
+ *  - Windows: Credential Manager through PowerShell (P/Invoke to advapi32), value on stdin.
+ * Other platforms fall back to Veil's own encrypted store (see LocalVault).
  *
  * Failures are classified into structured, value-free codes (keychain_unavailable /
  * keychain_locked / keychain_failed) with a sub-cause so the person gets the exact fix.
@@ -113,16 +113,99 @@ export class MacSecurityBackend implements KeychainBackend {
   }
 }
 
+/**
+ * Windows Credential Manager through PowerShell + P/Invoke (advapi32 CredRead/CredWrite/CredDelete):
+ * no native addon or extra module. The script goes in with -EncodedCommand; the operation,
+ * service, account and value travel base64-encoded on stdin, never on argv.
+ */
+const WIN_CRED_SCRIPT = String.raw`
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class VeilCred {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+  struct CREDENTIAL { public uint Flags; public uint Type; public string TargetName; public string Comment; public long LastWritten; public uint CredentialBlobSize; public IntPtr CredentialBlob; public uint Persist; public uint AttributeCount; public IntPtr Attributes; public string TargetAlias; public string UserName; }
+  [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool CredWrite(ref CREDENTIAL c, uint f);
+  [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool CredRead(string t, uint type, uint f, out IntPtr p);
+  [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool CredDelete(string t, uint type, uint f);
+  [DllImport("advapi32.dll")] static extern void CredFree(IntPtr p);
+  public static int Write(string target, byte[] blob) {
+    var c = new CREDENTIAL { Type = 1, TargetName = target, UserName = "veil", Persist = 2, CredentialBlobSize = (uint)blob.Length };
+    c.CredentialBlob = Marshal.AllocHGlobal(blob.Length);
+    try { Marshal.Copy(blob, 0, c.CredentialBlob, blob.Length); return CredWrite(ref c, 0) ? 0 : Marshal.GetLastWin32Error(); }
+    finally { Marshal.FreeHGlobal(c.CredentialBlob); }
+  }
+  public static int Read(string target, out byte[] blob) {
+    blob = null; IntPtr p;
+    if (!CredRead(target, 1, 0, out p)) return Marshal.GetLastWin32Error();
+    try { var c = (CREDENTIAL)Marshal.PtrToStructure(p, typeof(CREDENTIAL)); blob = new byte[c.CredentialBlobSize]; Marshal.Copy(c.CredentialBlob, blob, 0, blob.Length); return 0; }
+    finally { CredFree(p); }
+  }
+  public static int Delete(string target) { return CredDelete(target, 1, 0) ? 0 : Marshal.GetLastWin32Error(); }
+}
+'@
+function D([string]$s) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) }
+$l = [Console]::In.ReadToEnd() -split "\r?\n"
+$target = (D $l[1]) + '/' + (D $l[2])
+switch ($l[0]) {
+  'set' { exit [VeilCred]::Write($target, [Convert]::FromBase64String($l[3])) }
+  'delete' { exit [VeilCred]::Delete($target) }
+  default {
+    $b = $null
+    $rc = [VeilCred]::Read($target, [ref]$b)
+    if ($rc -ne 0) { exit $rc }
+    [Console]::Out.Write([Convert]::ToBase64String($b))
+  }
+}
+`;
+
+const ERROR_NOT_FOUND = 1168;
+const WIN_CRED_ARGV = ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(WIN_CRED_SCRIPT, 'utf16le').toString('base64')];
+
+const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
+
+export class WindowsCredentialBackend implements KeychainBackend {
+  readonly name = 'windows-credential-manager';
+  constructor(private readonly runner: Runner) {}
+
+  private async call(op: 'set' | 'get' | 'delete', service: string, account: string, value?: string): Promise<RunResult> {
+    const stdin = [op, b64(service), b64(account), ...(value === undefined ? [] : [b64(value)])].join('\n');
+    const r = await runKeychainTool(this.runner, WIN_CRED_ARGV, { stdin, timeoutMs: 60_000 });
+    if (r.timedOut) throw new KeychainError('Credential Manager did not answer', 'keychain_failed');
+    return r;
+  }
+
+  async set(service: string, account: string, value: string): Promise<void> {
+    const bytes = Buffer.byteLength(value, 'utf8');
+    if (bytes > 2560) throw new UserError('Windows Credential Manager limits a value to 2560 bytes; use encrypted-file', 'unsupported_value');
+    const r = await this.call('set', service, account, value);
+    if (r.code !== 0) throw new KeychainError('keychain write failed (Credential Manager)', 'keychain_failed');
+  }
+
+  async get(service: string, account: string): Promise<string | undefined> {
+    const r = await this.call('get', service, account);
+    if (r.code === ERROR_NOT_FOUND) return undefined;
+    if (r.code !== 0) throw new KeychainError('keychain read failed (Credential Manager)', 'keychain_failed');
+    return Buffer.from(r.stdout.toString('utf8').trim(), 'base64').toString('utf8');
+  }
+
+  async delete(service: string, account: string): Promise<boolean> {
+    const r = await this.call('delete', service, account);
+    return r.code === 0;
+  }
+}
+
 export function defaultKeychainBackend(runner: Runner): KeychainBackend {
   if (process.platform === 'darwin') return new MacSecurityBackend(runner);
   if (process.platform === 'linux' || process.platform === 'freebsd') return new SecretToolBackend(runner);
+  if (process.platform === 'win32') return new WindowsCredentialBackend(runner);
   return {
     name: 'unsupported',
     set: async () => {
-      throw new KeychainError('OS keychain is not supported on this platform yet (Windows Credential Manager is planned)', 'keychain_unsupported', 'unsupported_os');
+      throw new KeychainError('OS keychain is not supported on this platform', 'keychain_unsupported', 'unsupported_os');
     },
     get: async () => {
-      throw new KeychainError('OS keychain is not supported on this platform yet (Windows Credential Manager is planned)', 'keychain_unsupported', 'unsupported_os');
+      throw new KeychainError('OS keychain is not supported on this platform', 'keychain_unsupported', 'unsupported_os');
     },
     delete: async () => false,
   };

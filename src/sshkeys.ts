@@ -90,12 +90,28 @@ export class SshKeys implements SshKeyProvider {
   async scanHost(hostKey: string): Promise<HostKeyScan> {
     const { hostname, port } = this.hostTarget(hostKey);
     const r = await this.runner(['ssh-keyscan', '-T', '10', '-p', String(port), '-t', 'ed25519,ecdsa,rsa', hostname], { timeoutMs: 20_000 });
-    const lines = r.stdout.toString('utf8').split('\n').filter((l) => l && !l.startsWith('#'));
+    let lines = r.stdout.toString('utf8').split('\n').filter((l) => l && !l.startsWith('#'));
+    if (!lines.length) lines = await this.scanViaSsh(hostname, port);
     if (!lines.length) throw new UserError(`could not read host keys from ${hostKey}`, 'host_unreachable');
     const fp = await this.runner(['ssh-keygen', '-l', '-f', '-'], { stdin: lines.join('\n') + '\n', timeoutMs: 10_000 });
     const fingerprints = fp.stdout.toString('utf8').split('\n').filter(Boolean);
     const known = await this.isKnown(hostname, port);
     return { lines, fingerprints, known };
+  }
+
+  /** Fallback when ssh-keyscan returns nothing (e.g. Windows' build cannot negotiate KEX with newer servers): let ssh record the host key in a throwaway known_hosts. */
+  private async scanViaSsh(hostname: string, port: number): Promise<string[]> {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'si-scan-'));
+    try {
+      const kh = path.join(tmp, 'known_hosts');
+      await this.runner(
+        ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no', '-o', `UserKnownHostsFile=${kh}`, '-o', 'HashKnownHosts=no', '-o', 'GlobalKnownHostsFile=none', '-o', 'PreferredAuthentications=none', '-o', 'ConnectTimeout=10', '-p', String(port), `veil-scan@${hostname}`, 'true'],
+        { timeoutMs: 20_000 },
+      );
+      return existsSync(kh) ? readFileSync(kh, 'utf8').split('\n').filter((l) => l && !l.startsWith('#')) : [];
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   }
 
   private async isKnown(hostname: string, port: number): Promise<boolean> {
