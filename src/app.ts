@@ -255,12 +255,16 @@ export class App {
         }
         return { request_id: op.id, status: op.status, next: 'call secret_wait with this request_id' };
       }
-      if (action === 'decline' || action === 'cancel') {
+      // Only an explicit decline cancels. Clients often auto-'cancel' the URL elicitation
+      // (dismissed dialog, no UI, non-interactive mode) without the person ever seeing it, so
+      // 'cancel' falls through to the normal flow: open the local page and wait for the person.
+      if (action === 'decline') {
         this.ui.close(url);
         this.ops.finish(op.id, 'cancelled');
         this.audit.write('op_cancelled', { op: op.id, via: 'elicitation' });
         return this.opResult(op);
       }
+      if (action === 'cancel') this.audit.write('elicitation_dismissed', { op: op.id });
     }
     const opened = this.cfg.ui.openBrowser ? await this.openUrl(url) : false;
     if (this.cfg.ui.blockSeconds > 0) {
