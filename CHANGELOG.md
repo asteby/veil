@@ -17,6 +17,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 
 ### Added
+- Windows Credential Manager keychain backend (PowerShell + advapi32 P/Invoke; service, account and value travel base64 on stdin, never argv). Windows limits a value to 2560 bytes; larger ones should use the encrypted store.
+- `ssh_key_provision`: when `ssh-keyscan` returns nothing (e.g. Windows OpenSSH against newer servers), host keys are read through `ssh` into a throwaway known_hosts.
 - Encrypted vault backup/sync: `vault_export`, `vault_sync`, `vault_import`, `vault_rekey` and `veil export|import|sync|rekey`. Envelope encryption (per-secret AES-256-GCM DEK wrapped by an argon2id/scrypt + optional key-file/keychain KEK), encrypted index (names hidden from storage), anti-rollback `seq`, vector clocks with explicit conflict strategies, KEK rotation without re-encrypting values.
 - Sync targets: local folder, SSH, private git repo, S3/R2/MinIO (own SigV4), WebDAV, generic HTTP; single-file `.vfb` layout.
 - Share by token: `share_create`, `share_list`, `share_revoke`, `share_import`, `veil share open|list|revoke`. Fresh key per share in the URL fragment, optional passphrase factor, authenticated expiry and max views, burn after read, revocation with rotation hint, attempt limits, local reveal page with copy button and auto-hide.
