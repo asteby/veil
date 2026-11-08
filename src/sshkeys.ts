@@ -35,6 +35,7 @@ export class SshKeys implements SshKeyProvider {
   private readonly dir: string;
   private agent?: PrivateAgent;
   private loaded = new Set<string>();
+  private materialized = new Set<string>();
 
   constructor(
     private readonly cfg: Config,
@@ -67,8 +68,35 @@ export class SshKeys implements SshKeyProvider {
     return r;
   }
 
-  async ensureLoaded(alias: string): Promise<{ publicKeyFile: string; agentSocket: string }> {
+  /** Windows: private key file with an owner-only ACL, removed in stop(). */
+  private async materialize(rec: KeyRecord): Promise<string> {
+    if (rec.storage === 'file') {
+      await this.restrictAcl(rec.privateKeyFile!);
+      return rec.privateKeyFile!;
+    }
+    const dir = path.join(this.vault.runDir(), 'keys');
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${rec.alias}.${process.pid}.key`);
+    if (!this.materialized.has(file)) {
+      const priv = (await this.vault.resolve(`${this.vault.internalDestination}:ssh_key.${rec.alias}`)).value;
+      writeFileSync(file, priv.endsWith('\n') ? priv : priv + '\n', { mode: 0o600 });
+      this.materialized.add(file);
+      await this.restrictAcl(file);
+    }
+    return file;
+  }
+
+  /** icacls: drop inherited ACEs and grant only the current user (OpenSSH refuses keys readable by others). */
+  private async restrictAcl(file: string): Promise<void> {
+    const user = process.env.USERNAME;
+    if (!user) throw new UserError('cannot determine the current Windows user', 'ssh_agent');
+    const r = await this.runner(['icacls', file, '/inheritance:r', '/grant:r', `${user}:F`], { timeoutMs: 15_000 });
+    if (r.code !== 0) throw new UserError('could not restrict permissions of the private key file', 'ssh_agent');
+  }
+
+  async ensureLoaded(alias: string): Promise<{ publicKeyFile: string; agentSocket: string; identityFile?: string }> {
     const rec = this.record(alias);
+    if (process.platform === 'win32') return { publicKeyFile: rec.publicKeyFile, agentSocket: '', identityFile: await this.materialize(rec) };
     this.agent ??= new PrivateAgent(this.vault.runDir());
     if (!this.loaded.has(alias)) {
       const priv = rec.storage === 'file' ? readFileSync(rec.privateKeyFile!, 'utf8') : (await this.vault.resolve(`${this.vault.internalDestination}:ssh_key.${alias}`)).value;
@@ -80,6 +108,8 @@ export class SshKeys implements SshKeyProvider {
 
   stop(): void {
     this.agent?.stop();
+    for (const f of this.materialized) rmSync(f, { force: true });
+    this.materialized.clear();
   }
 
   hostTarget(hostKey: string): { hostname: string; port: number; user?: string } {
@@ -179,10 +209,17 @@ export class SshKeys implements SshKeyProvider {
     chmodSync(tmp, 0o700);
     const fifo = path.join(tmp, 'pw');
     const helper = path.join(tmp, 'askpass.sh');
+    const helperCmd = path.join(tmp, 'askpass.cmd');
     try {
-      const mk = await this.runner(['mkfifo', '-m', '600', fifo], { timeoutMs: 5000 });
-      if (mk.code !== 0) throw new UserError('mkfifo failed', 'install_failed');
-      writeFileSync(helper, '#!/bin/sh\nexec cat "$SI_ASKPASS_FIFO"\n', { mode: 0o700 });
+      const win = process.platform === 'win32';
+      if (win) {
+        // No FIFOs on Windows: the askpass helper echoes the password from the env of this one ssh child (never argv, never disk).
+        writeFileSync(helperCmd, '@echo off\r\necho %SI_ASKPASS_PW%\r\n');
+      } else {
+        const mk = await this.runner(['mkfifo', '-m', '600', fifo], { timeoutMs: 5000 });
+        if (mk.code !== 0) throw new UserError('mkfifo failed', 'install_failed');
+        writeFileSync(helper, '#!/bin/sh\nexec cat "$SI_ASKPASS_FIFO"\n', { mode: 0o700 });
+      }
       const { hostname, port, user } = this.hostTarget(hostKey);
       const argv = [
         this.cfg.ssh.binary,
@@ -198,8 +235,15 @@ export class SshKeys implements SshKeyProvider {
         '--',
         [this.ssh.hostConfig(hostKey).sudo ? 'sudo -n sh -c' : 'sh -c', shQuote(this.installScript), 'sh', shQuote(this.ssh.hostConfig(hostKey).authorizedKeysFile ?? '')].join(' '),
       ];
-      const env = { ...process.env, SSH_ASKPASS: helper, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: process.env.DISPLAY ?? ':0', SI_ASKPASS_FIFO: fifo };
+      const env = win
+        ? { ...process.env, SSH_ASKPASS: helperCmd, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: process.env.DISPLAY ?? 'veil:0', SI_ASKPASS_PW: password }
+        : { ...process.env, SSH_ASKPASS: helper, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: process.env.DISPLAY ?? ':0', SI_ASKPASS_FIFO: fifo };
       const running: Promise<RunResult> = this.runner(argv, { stdin: pub + '\n', env, timeoutMs: 60_000 });
+      if (win) {
+        const rw = await running;
+        if (rw.code !== 0) throw new UserError('password authentication or key installation failed', 'install_failed');
+        return;
+      }
       let finished = false;
       void running.finally(() => (finished = true));
       // Feed the password to the FIFO once ssh's askpass opens it for reading.
@@ -228,7 +272,8 @@ export class SshKeys implements SshKeyProvider {
 
   async testAccess(hostKey: string, alias: string): Promise<boolean> {
     const k = await this.ensureLoaded(alias);
-    const { argv } = await this.ssh.baseArgv(hostKey, ['-o', `IdentityAgent=${k.agentSocket}`, '-o', 'IdentitiesOnly=yes', '-i', k.publicKeyFile]);
+    const keyOpts = k.identityFile ? ['-o', 'IdentitiesOnly=yes', '-i', k.identityFile] : ['-o', `IdentityAgent=${k.agentSocket}`, '-o', 'IdentitiesOnly=yes', '-i', k.publicKeyFile];
+    const { argv } = await this.ssh.baseArgv(hostKey, keyOpts);
     const r = await this.runner([...argv, '--', 'true'], { timeoutMs: 30_000 });
     return r.code === 0;
   }

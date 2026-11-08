@@ -7,7 +7,7 @@ import { expandHome, shQuote, sleep, UserError } from './util.js';
 
 export interface SshKeyProvider {
   /** Returns the public key file for `alias` after making sure the private key is loaded in the private agent. */
-  ensureLoaded(alias: string): Promise<{ publicKeyFile: string; agentSocket: string }>;
+  ensureLoaded(alias: string): Promise<{ publicKeyFile: string; agentSocket: string; identityFile?: string }>;
   /** Alias of a key provisioned for this host by ssh_key_provision, if any. */
   aliasForHost(hostKey: string): string | undefined;
 }
@@ -66,7 +66,9 @@ export class Ssh {
     if (alias) {
       if (!this.keys) throw new UserError('ssh key manager unavailable', 'internal');
       const k = await this.keys.ensureLoaded(alias);
-      argv.push('-o', `IdentityAgent=${k.agentSocket}`, '-o', 'IdentitiesOnly=yes', '-i', k.publicKeyFile);
+      // Windows has no private ssh-agent socket: use a restricted key file instead.
+      if (k.identityFile) argv.push('-o', 'IdentitiesOnly=yes', '-i', k.identityFile);
+      else argv.push('-o', `IdentityAgent=${k.agentSocket}`, '-o', 'IdentitiesOnly=yes', '-i', k.publicKeyFile);
     } else if (h.identityFile) {
       argv.push('-o', 'IdentitiesOnly=yes', '-i', expandHome(h.identityFile));
     }

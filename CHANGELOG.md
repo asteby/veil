@@ -17,6 +17,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 
 ### Added
+- `ssh_key_provision` and `ssh_exec` on Windows: no private ssh-agent socket or FIFO, so the key is used from an owner-only (icacls) temp file removed on exit, and the one-time password reaches ssh through a `SSH_ASKPASS` .cmd helper reading it from that child process environment only.
 - Windows Credential Manager keychain backend (PowerShell + advapi32 P/Invoke; service, account and value travel base64 on stdin, never argv). Windows limits a value to 2560 bytes; larger ones should use the encrypted store.
 - `ssh_key_provision`: when `ssh-keyscan` returns nothing (e.g. Windows OpenSSH against newer servers), host keys are read through `ssh` into a throwaway known_hosts.
 - Encrypted vault backup/sync: `vault_export`, `vault_sync`, `vault_import`, `vault_rekey` and `veil export|import|sync|rekey`. Envelope encryption (per-secret AES-256-GCM DEK wrapped by an argon2id/scrypt + optional key-file/keychain KEK), encrypted index (names hidden from storage), anti-rollback `seq`, vector clocks with explicit conflict strategies, KEK rotation without re-encrypting values.
