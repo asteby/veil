@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { actionLiteral, actionPlan, actionSecretRefs, actionWarnings, runExec, runHttp, UseAction } from './actions.js';
@@ -96,7 +97,10 @@ export const Inputs = {
   }),
   web_login: z.object({ site: z.string(), url: z.string().optional(), steps: z.array(WebStep).min(1).max(50), save_session: z.boolean().default(true) }),
   ssh_key_provision: z.object({
-    host: z.string().describe('key of ssh.hosts in config'),
+    host: z.string().optional().describe('key of ssh.hosts in config; if omitted, `address` is used as the key'),
+    address: z.string().regex(/^[A-Za-z0-9._:-]{1,253}$/).optional().describe('IP or hostname of a server not yet in ssh.hosts; it is added to ssh.hosts after the person confirms the form'),
+    user: z.string().regex(/^[a-z_][a-z0-9_.-]{0,31}$/i).optional().describe('SSH user for an ad-hoc `address` (default root)'),
+    port: z.number().int().min(1).max(65535).optional(),
     alias: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
     storage: z.enum(['store', 'file']).default('store'),
     password: z.boolean().default(false).describe('ask the person for a one-time SSH password to install the key'),
@@ -897,7 +901,14 @@ export class App {
   // ------------------------------------------------------------ ssh
 
   async sshKeyProvision(raw: unknown): Promise<SafeResult> {
-    const a = Inputs.ssh_key_provision.parse(raw);
+    const parsed = Inputs.ssh_key_provision.parse(raw);
+    const hostKey = parsed.host ?? parsed.address;
+    if (!hostKey) throw new UserError('provide `host` (from ssh.hosts) or `address` (IP/hostname)', 'invalid_args');
+    const a = { ...parsed, host: hostKey };
+    // Ad-hoc server: usable without pre-editing the config. The person still confirms host, user and
+    // host-key fingerprint in the local form before anything is generated or installed.
+    const adhoc = Boolean(parsed.address) && !this.cfg.ssh.hosts[hostKey];
+    if (adhoc) this.cfg.ssh.hosts[hostKey] = { host: parsed.address, user: parsed.user ?? 'root', port: parsed.port, sudo: false };
     const target = this.keys.hostTarget(a.host);
     const scan = await this.keys.scanHost(a.host);
     const fields: FieldDef[] = [];
@@ -937,11 +948,13 @@ export class App {
           const rec = await this.keys.generate(a.alias, a.host, a.storage);
           await this.keys.install(a.host, rec, typeof values.password === 'string' ? values.password : undefined);
           const ok = await this.keys.testAccess(a.host, a.alias);
+          if (ok && adhoc) persistSshHost(this.paths.configFile, a.host, this.cfg.ssh.hosts[a.host]!);
           const result = { alias: a.alias, host: a.host, public_key_fingerprint: rec.fingerprint, host_key_fingerprints: scan.fingerprints.map((f) => f.split(' ')[1]), access_test: ok ? 'ok' : 'failed' };
           this.ops.finish(op.id, ok ? 'completed' : 'failed', result);
           this.audit.write('ssh_key_provisioned', { op: op.id, host: a.host, alias: a.alias, fingerprint: rec.fingerprint, access_test: ok });
           return ok ? { ok: true, message: t.done } : { ok: false, message: 'access test failed' };
         } catch (e) {
+          if (adhoc) delete this.cfg.ssh.hosts[a.host];
           this.ops.finish(op.id, 'failed', this.errorResult(e));
           this.audit.write('ssh_provision_failed', { op: op.id, host: a.host, error: e instanceof UserError ? e.code : 'internal' });
           return { ok: false, message: `Error: ${e instanceof UserError ? e.code : 'internal'}` };
@@ -1013,4 +1026,16 @@ function pageFix(e: unknown, lang: Lang): PageFix | undefined {
 export function serverLang(configured: 'auto' | Lang, env: NodeJS.ProcessEnv = process.env): Lang {
   if (configured !== 'auto') return configured;
   return localeLang(env);
+}
+
+/** Adds an ad-hoc host to ssh.hosts in config.json (atomic write, 0600) so later ssh_exec calls work. */
+function persistSshHost(configFile: string, key: string, host: { host?: string; user?: string; port?: number }): void {
+  const raw = existsSync(configFile) ? (JSON.parse(readFileSync(configFile, 'utf8')) as { ssh?: { hosts?: Record<string, unknown> } }) : {};
+  raw.ssh ??= {};
+  raw.ssh.hosts ??= {};
+  if (raw.ssh.hosts[key]) return;
+  raw.ssh.hosts[key] = Object.fromEntries(Object.entries({ host: host.host, user: host.user, port: host.port }).filter(([, v]) => v !== undefined));
+  const tmp = configFile + '.tmp';
+  writeFileSync(tmp, JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });
+  renameSync(tmp, configFile);
 }
