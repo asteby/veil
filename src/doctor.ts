@@ -274,13 +274,20 @@ export async function runDoctor(d: DoctorDeps): Promise<DoctorReport> {
     usable = Boolean(sec) && locked !== true;
     reason = !sec ? 'missing_tool' : locked ? 'locked' : undefined;
   } else {
-    backend = os === 'win32' ? 'Windows Credential Manager (planned)' : `none for ${os}`;
+    // Windows has a Credential Manager backend (src/stores/keychain.ts) that this check does not probe yet, so say that instead of "planned".
+    backend = os === 'win32' ? 'Windows Credential Manager (not probed by doctor)' : `none for ${os}`;
     add({
       id: 'keychain.unsupported',
       area: 'keychain',
       status: 'warn',
-      title: { en: `No OS keychain backend for ${os} yet${os === 'win32' ? ' (Credential Manager / DPAPI is planned)' : ''}`, es: `Aún no hay backend de llavero para ${os}${os === 'win32' ? ' (Credential Manager / DPAPI está previsto)' : ''}` },
-      impact: { en: "Values go to Veil's own encrypted store (master password on the local page).", es: 'Los valores van al almacén cifrado propio de Veil (contraseña maestra en la página local).' },
+      title: {
+        en: os === 'win32' ? 'doctor does not probe Windows Credential Manager yet' : `No OS keychain backend for ${os} yet`,
+        es: os === 'win32' ? 'doctor aún no verifica el Administrador de credenciales de Windows' : `Aún no hay backend de llavero para ${os}`,
+      },
+      impact: {
+        en: os === 'win32' ? 'Veil uses Windows Credential Manager when it works; if not, it falls back to its own encrypted store.' : "Values go to Veil's own encrypted store (master password on the local page).",
+        es: os === 'win32' ? 'Veil usa el Administrador de credenciales de Windows cuando funciona; si no, usa su almacén cifrado propio.' : 'Los valores van al almacén cifrado propio de Veil (contraseña maestra en la página local).',
+      },
       fix: LOCAL_VAULT_FIX,
     });
     usable = false;

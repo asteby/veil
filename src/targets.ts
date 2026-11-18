@@ -66,7 +66,9 @@ export function describeTarget(t: Target): Record<string, unknown> {
 
 export function checkTargetAllowed(cfg: Config, t: Target, keys: string[]): void {
   const tp = targetPath(t);
-  if (tp && (tp.split('/').includes('..') || !(tp.startsWith('/') || tp.startsWith('~/')))) throw new UserError('target path must be absolute and must not contain ".." segments', 'invalid_path');
+  // Accept POSIX (/x, ~/x), Windows drive (C:\x or C:/x) and UNC (\\server\share) absolute paths; ".." is refused with either separator.
+  const absolute = /^(\/|~[\\/]|[A-Za-z]:[\\/]|\\\\)/.test(tp ?? '');
+  if (tp && (tp.split(/[\\/]/).includes('..') || !absolute)) throw new UserError('target path must be absolute and must not contain ".." segments', 'invalid_path');
   const ok = cfg.writeTargets.some((r: WriteTargetRule) => {
     const ruleKind = r.kind;
     if (ruleKind !== t.kind) return false;

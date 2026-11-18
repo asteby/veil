@@ -1,6 +1,6 @@
 {
   "name": "@asteby/veil",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Veil: an MCP server that lets an AI agent request, store and use credentials without ever seeing their values.",
   "license": "MIT",
   "author": "asteby",
@@ -21,7 +21,6 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "scripts/postinstall.mjs",
     "README.md",
     "README.es.md",
     "THREAT-MODEL.md",
@@ -49,12 +48,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "start": "node dist/cli.js",
-    "postinstall": "node scripts/postinstall.mjs"
+    "start": "node dist/cli.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

@@ -1,4 +1,4 @@
-import { closeSync, constants, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, writeSync, chmodSync, mkdirSync, appendFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync, chmodSync, mkdirSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Config } from './config.js';
@@ -24,6 +24,13 @@ export interface HostKeyScan {
 }
 
 const ALIAS_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Windows SSH_ASKPASS helper. The password is passed in the environment of the ssh child and read by
+ * PowerShell at run time. It is never expanded by cmd (`echo %VAR%` breaks on & | < > ^ and runs
+ * whatever the password contains). The file content is static.
+ */
+export const WIN_ASKPASS_CMD = '@echo off\r\npowershell -NoProfile -NonInteractive -Command "[Console]::Out.Write($env:SI_ASKPASS_PW)"\r\n';
 
 /**
  * SSH key provisioning: generates ed25519 keys locally, keeps the private key in the
@@ -76,6 +83,12 @@ export class SshKeys implements SshKeyProvider {
     }
     const dir = path.join(this.vault.runDir(), 'keys');
     mkdirSync(dir, { recursive: true });
+    // Restrict the directory first: a file created inside inherits only the owner's ACE, so the key is never readable by others, not even for a moment.
+    if (!this.dirRestricted) {
+      await this.restrictAcl(dir, true);
+      this.removeStaleKeys(dir);
+      this.dirRestricted = true;
+    }
     const file = path.join(dir, `${rec.alias}.${process.pid}.key`);
     if (!this.materialized.has(file)) {
       const priv = (await this.vault.resolve(`${this.vault.internalDestination}:ssh_key.${rec.alias}`)).value;
@@ -86,11 +99,30 @@ export class SshKeys implements SshKeyProvider {
     return file;
   }
 
+  private dirRestricted = false;
+
+  /** Removes key files left by processes that no longer run (e.g. after a crash, where stop() did not run). */
+  private removeStaleKeys(dir: string): void {
+    for (const name of readdirSync(dir)) {
+      const m = /\.(\d+)\.key$/.exec(name);
+      if (!m) continue;
+      const pid = Number(m[1]);
+      let alive = true;
+      try {
+        process.kill(pid, 0);
+      } catch (e) {
+        alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+      }
+      if (!alive) rmSync(path.join(dir, name), { force: true });
+    }
+  }
+
   /** icacls: drop inherited ACEs and grant only the current user (OpenSSH refuses keys readable by others). */
-  private async restrictAcl(file: string): Promise<void> {
+  private async restrictAcl(file: string, isDir = false): Promise<void> {
     const user = process.env.USERNAME;
     if (!user) throw new UserError('cannot determine the current Windows user', 'ssh_agent');
-    const r = await this.runner(['icacls', file, '/inheritance:r', '/grant:r', `${user}:F`], { timeoutMs: 15_000 });
+    const grant = isDir ? `${user}:(OI)(CI)F` : `${user}:F`;
+    const r = await this.runner(['icacls', file, '/inheritance:r', '/grant:r', grant], { timeoutMs: 15_000 });
     if (r.code !== 0) throw new UserError('could not restrict permissions of the private key file', 'ssh_agent');
   }
 
@@ -214,7 +246,7 @@ export class SshKeys implements SshKeyProvider {
       const win = process.platform === 'win32';
       if (win) {
         // No FIFOs on Windows: the askpass helper echoes the password from the env of this one ssh child (never argv, never disk).
-        writeFileSync(helperCmd, '@echo off\r\necho %SI_ASKPASS_PW%\r\n');
+        writeFileSync(helperCmd, WIN_ASKPASS_CMD);
       } else {
         const mk = await this.runner(['mkfifo', '-m', '600', fifo], { timeoutMs: 5000 });
         if (mk.code !== 0) throw new UserError('mkfifo failed', 'install_failed');

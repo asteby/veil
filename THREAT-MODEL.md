@@ -60,6 +60,7 @@ Removes the value and common variants: raw, trimmed, JSON-escaped (single and do
 - Every **new** `secret_use`, `secret_write` target, non-store `blind_input` sink, `web_capture`/`web_login` plan and `ssh_exec` command needs an explicit click on a local approval page that shows the **literal** action (with `${secret:…}`/`${field}` placeholders, never values), the secrets involved, cwd/host/path/keys and heuristic warnings (shell, network/encoding tools, interpreters).
 - The owner may "remember" an approval; it is keyed by the SHA-256 fingerprint of the exact canonical plan. Any change (one character of the command, a header, a different secret, cwd, host, path, key) is a new fingerprint and asks again.
 - Clipboard copies are never remembered and happen only from a click on the page (the value is sent to that page only, and cleared after N seconds).
+- **Auto mode** (`autoMode.enabled` in `config.json`) skips the page for the kinds it lists. Defaults: `ssh_exec` and `secret_write` only. `secret_use` is not in the default because, with it, the agent can send a secret through `exec` with no page. `until` is required while enabled and must be at most 30 days ahead. Config files are not writable by the agent through Veil; deny `Edit`/`Write` on `~/.config/veil/**` in Claude Code (see the README hardening section).
 
 ### 4.6 Storage
 - `keychain`: OS keychain via Secret Service (`secret-tool`) or macOS `security`.

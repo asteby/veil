@@ -60,6 +60,9 @@ export function expandHome(p: string): string {
  * Used for allowlists of paths, keys and repositories.
  */
 export function globMatch(pattern: string, value: string): boolean {
+  // Windows paths use "\": compare with "/" on both sides so one allowlist works on every OS.
+  pattern = pattern.replace(/\\/g, '/');
+  value = value.replace(/\\/g, '/');
   let re = '^';
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i]!;

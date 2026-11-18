@@ -237,7 +237,9 @@ describe('CLI (in process) and deployment helpers', () => {
     mkdirSync(path.join(dir, 'myapp.service.d'));
     writeFileSync(path.join(dir, 'myapp.service.d', 'veil.conf'), readFileSync(path.resolve('examples/systemd/myapp.service.d/veil.conf'), 'utf8').replaceAll('/usr/bin/veil', process.execPath).replaceAll('/usr/bin/node', process.execPath));
     const r = spawnSync('systemd-analyze', ['verify', path.join(dir, 'myapp.service')], { encoding: 'utf8' });
-    expect(r.stderr).toBe('');
+    // Host-level warnings (other installed units, e.g. xfs_scrub_all on newer runners) are not about this example: only our unit counts.
+    const ours = r.stderr.split('\n').filter((l) => l.includes('myapp'));
+    expect(ours).toEqual([]);
     expect(r.status).toBe(0);
   });
 
