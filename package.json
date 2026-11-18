@@ -13,6 +13,7 @@
     "url": "https://github.com/asteby/veil/issues"
   },
   "type": "module",
+  "packageManager": "pnpm@10.34.9",
   "bin": {
     "veil": "dist/cli.js",
     "veilform": "dist/cli.js"
@@ -21,7 +22,6 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "scripts/postinstall.mjs",
     "README.md",
     "README.es.md",
     "THREAT-MODEL.md",
@@ -49,12 +49,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "start": "node dist/cli.js",
-    "postinstall": "node scripts/postinstall.mjs"
+    "start": "node dist/cli.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

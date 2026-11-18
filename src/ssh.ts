@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import type { Config, SshHostConfig } from './config.js';
 import type { RunOptions, RunResult, Runner } from './proc.js';
@@ -38,7 +39,8 @@ export class Ssh {
     const m = this.cfg.autoMode;
     if (!m.enabled || !m.sshConfigHosts || (m.until && Date.parse(m.until) <= Date.now())) return false;
     if (!/^[A-Za-z0-9._-]+$/.test(hostKey)) return false;
-    const file = path.join(process.env.HOME ?? '', '.ssh', 'config');
+    // os.homedir(), not process.env.HOME: on native Windows HOME is usually unset, which would read a ./.ssh/config from the working directory.
+    const file = path.join(homedir(), '.ssh', 'config');
     if (!existsSync(file)) return false;
     return readFileSync(file, 'utf8')
       .split('\n')

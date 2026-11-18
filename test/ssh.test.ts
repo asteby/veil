@@ -189,9 +189,11 @@ describe('autoMode: ssh hosts from ~/.ssh/config', () => {
     mkdirSync(path.join(home, '.ssh'));
     writeFileSync(path.join(home, '.ssh', 'config'), 'Host *\n  ServerAliveInterval 30\nHost miserver otro\n  User ubuntu\n');
     const prev = process.env.HOME;
+    const prevProfile = process.env.USERPROFILE;
     process.env.HOME = home;
+    process.env.USERPROFILE = home; // os.homedir() reads USERPROFILE on Windows
     try {
-      const on = makeApp({ autoMode: { enabled: true } });
+      const on = makeApp({ autoMode: { enabled: true, until: new Date(Date.now() + 3600e3).toISOString() } });
       expect(() => on.app.ssh.hostConfig('miserver')).not.toThrow();
       expect(() => on.app.ssh.hostConfig('otro')).not.toThrow();
       expect(() => on.app.ssh.hostConfig('evil.example.com')).toThrow(/allowlist/);
@@ -200,11 +202,12 @@ describe('autoMode: ssh hosts from ~/.ssh/config', () => {
       const off = makeApp({});
       expect(() => off.app.ssh.hostConfig('miserver')).toThrow(/allowlist/);
       await off.cleanup();
-      const noFlag = makeApp({ autoMode: { enabled: true, sshConfigHosts: false } });
+      const noFlag = makeApp({ autoMode: { enabled: true, until: new Date(Date.now() + 3600e3).toISOString(), sshConfigHosts: false } });
       expect(() => noFlag.app.ssh.hostConfig('miserver')).toThrow(/allowlist/);
       await noFlag.cleanup();
     } finally {
       process.env.HOME = prev;
+      process.env.USERPROFILE = prevProfile;
     }
   });
 });

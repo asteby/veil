@@ -146,13 +146,27 @@ export const ConfigSchema = z.object({
   autoMode: z
     .object({
       enabled: z.boolean().default(false),
-      kinds: z.array(z.enum(['secret_use', 'ssh_exec', 'secret_write', 'web_capture'])).default(['secret_use', 'ssh_exec', 'secret_write']),
-      /** ISO date-time after which auto mode switches itself off (recommended). */
+      /**
+       * secret_use is NOT in the default: with it, the agent can use a secret (for example in exec)
+       * without the person seeing the action. Add it on purpose.
+       */
+      kinds: z.array(z.enum(['secret_use', 'ssh_exec', 'secret_write', 'web_capture'])).default(['ssh_exec', 'secret_write']),
+      /** ISO date-time after which auto mode switches itself off. Required while enabled, at most 30 days ahead. */
       until: z.string().datetime({ offset: true }).optional(),
       /** While on, `Host <name>` entries of ~/.ssh/config (the person's own list) also count as ssh.hosts. */
       sshConfigHosts: z.boolean().default(true),
     })
-    .default({ enabled: false, kinds: ['secret_use', 'ssh_exec', 'secret_write'], sshConfigHosts: true }),
+    .superRefine((m, ctx) => {
+      if (!m.enabled) return;
+      if (!m.until) {
+        ctx.addIssue({ code: 'custom', path: ['until'], message: 'autoMode.enabled needs autoMode.until (ISO date-time, at most 30 days ahead)' });
+        return;
+      }
+      if (Date.parse(m.until) - Date.now() > 30 * 24 * 3600 * 1000) {
+        ctx.addIssue({ code: 'custom', path: ['until'], message: 'autoMode.until must be at most 30 days ahead' });
+      }
+    })
+    .default({ enabled: false, kinds: ['ssh_exec', 'secret_write'], sshConfigHosts: true }),
   cacheTtlSeconds: z.number().int().min(0).max(3600).default(60),
   defaultDestination: z.string().default('local'),
   destinations: z.record(z.string(), DestinationSchema).default({ local: { type: 'keychain', service: DEFAULT_KEYCHAIN_SERVICE, fallback: 'ask' } }),

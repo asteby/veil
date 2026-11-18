@@ -4,7 +4,7 @@
 
 <img src="docs/assets/hero-es.svg" width="100%" alt="Animación: el agente pide un token solo con metadatos, se abre un formulario local, escribes el secreto (se ven puntos), el valor va directo a .env, SSH, SQL o una API, y el agente solo recibe {stored:[&quot;MP_ACCESS_TOKEN&quot;]}.">
 
-# Veil
+# 💨 Veil
 
 **Que un agente de IA pida, guarde y use credenciales sin verlas jamás.**
 
@@ -123,7 +123,7 @@ node dist/cli.js init      # cuando esté publicado: npx @asteby/veil init
 - Llavero del sistema utilizable → `local` = llavero con `fallback: "auto"` (si el llavero falla después, los valores van al almacén cifrado de Veil).
 - Llavero ausente, bloqueado o no soportado → `local` = almacén cifrado de Veil (`encrypted-file` con `key: {source: "master"}`, archivo `~/.config/veil/local-vault.json`).
 
-Nunca ejecuta `sudo` ni pide secretos. Los comandos que necesitan privilegios (p. ej. `sudo apt install -y libsecret-tools`) se imprimen para que los copies. El `postinstall` opcional solo muestra una pista; con `VEIL_POSTINSTALL=init` ejecuta `init --dry-run` al instalar.
+Nunca ejecuta `sudo` ni pide secretos. Los comandos que necesitan privilegios (p. ej. `sudo apt install -y libsecret-tools`) se imprimen para que los copies. Ejecuta `veil init` después de instalar; `veil init --dry-run` muestra el plan antes. Nada se ejecuta al instalar.
 
 **El almacén cifrado** es un solo archivo en el formato `encrypted-file` existente: AES-256-GCM por valor (el nombre va como AAD), llave derivada con argon2id (Node ≥ 24.7; si no, scrypt N=2^17) de una **contraseña maestra**:
 
@@ -141,7 +141,7 @@ Si el destino por defecto es el llavero y falla durante un `secret_request`, la 
 
 - La configuración es una **allowlist**: copia [`examples/config.example.json`](examples/config.example.json) a `~/.config/veil/config.json` (o deja que `init` escriba una mínima) y deja solo lo necesario. Sin archivo hay un único destino, `local` (llavero del SO con `fallback: "ask"`: si el llavero falla, la página ofrece el almacén cifrado). Verifícala con `veil check-config` y `veil doctor`.
 - Variables: `VEIL_HOME` (por defecto `~/.config/veil`), `VEIL_CONFIG`, `VEIL_AGENT` (etiqueta que se escribe en la auditoría), `VEIL_KEY_FILE` (archivo de llave para `.env` cifrados), `VEIL_POSTINSTALL`.
-- Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las herramientas propias del agente lo que este servidor protege, p. ej. `"deny": ["Read(~/.config/veil/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
+- Endurecimiento recomendado en Claude Code (`.claude/settings.json`): niega a las herramientas propias del agente lo que este servidor protege, p. ej. `"deny": ["Read(~/.config/veil/**)", "Edit(~/.config/veil/**)", "Write(~/.config/veil/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 
 </details>
 

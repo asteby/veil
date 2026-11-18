@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [0.2.0] - Unreleased
 
+### Security
+- Auto mode: `secret_use` is no longer in the default `autoMode.kinds`; `autoMode.until` is required while enabled and must be at most 30 days ahead. Config refuses an enabled auto mode without it.
+- Windows SSH askpass: the password is read by PowerShell from the environment; cmd no longer expands it (`echo %VAR%` broke on `& | < > ^`).
+- Windows SSH keys: the key directory is restricted before the key is written, and key files left by dead processes are removed on the next use.
+- SSH hosts from `~/.ssh/config` are read from `os.homedir()` instead of `$HOME` (unset on native Windows).
+
+### Fixed
+- Windows paths: absolute paths with drive letters or UNC are accepted in write targets; `globMatch` compares `\` and `/` the same way.
+- `doctor` no longer calls Windows Credential Manager "planned".
+
+### Changed
+- The `postinstall` script was removed. Run `veil init` after installing. `prepack` builds `dist` before any publish.
+- Added `.gitattributes` (LF) and an advisory `windows-latest` CI job.
+
 ### Renamed to Veil
 - Package `@asteby/veil` (was `veilform`, never published), repository `asteby/veil`, command `veil`, MCP server name `veil`, visible name "Veil" on the local pages, CLI and messages. Re-register the server: `claude mcp remove veilform && claude mcp add veil -- node /path/to/dist/cli.js`.
 - Environment `VEIL_*` (`VEIL_HOME`, `VEIL_CONFIG`, `VEIL_AGENT`, `VEIL_QUIET`, `VEIL_LANG`, `VEIL_KEY_FILE`, `VEIL_CREDENTIAL`, `VEIL_AGENT_SOCK`, `VEIL_POSTINSTALL`, default `VEIL_PASSPHRASE`); config directory `~/.config/veil`; systemd credential `veil-key`; agent socket `$XDG_RUNTIME_DIR/veil/agent.sock`.

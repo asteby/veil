@@ -4,7 +4,7 @@
 
 <img src="docs/assets/hero-en.svg" width="100%" alt="Animation: the agent asks for a token with metadata only, a local form opens, you type the secret (shown as dots), the value goes straight to .env, SSH, SQL or an API, and the agent only receives {stored:[&quot;MP_ACCESS_TOKEN&quot;]}.">
 
-# Veil
+# 💨 Veil
 
 **Let an AI agent ask for, store and use credentials — without ever seeing them.**
 
@@ -123,7 +123,7 @@ node dist/cli.js init      # once published: npx @asteby/veil init
 - OS keychain usable → `local` = keychain with `fallback: "auto"` (if the keychain later breaks, values go to Veil's encrypted store).
 - OS keychain missing/locked/unsupported → `local` = Veil's encrypted store (`encrypted-file` with `key: {source: "master"}`, file `~/.config/veil/local-vault.json`).
 
-It never runs `sudo` and never asks for a secret. Commands that need privileges (e.g. `sudo apt install -y libsecret-tools`) are printed for you to copy. An optional `postinstall` only prints a hint; set `VEIL_POSTINSTALL=init` to run `init --dry-run` right after installing.
+It never runs `sudo` and never asks for a secret. Commands that need privileges (e.g. `sudo apt install -y libsecret-tools`) are printed for you to copy. Run `veil init` after installing; `veil init --dry-run` shows the plan first. Nothing runs at install time.
 
 **The encrypted store** is one file in the existing `encrypted-file` format: AES-256-GCM per value (the name is the AAD), key derived with argon2id (Node ≥ 24.7; scrypt N=2^17 otherwise) from a **master password**:
 
@@ -141,7 +141,7 @@ When the default destination is the keychain and it fails during a `secret_reque
 
 - Configuration is an **allowlist**: copy [`examples/config.example.json`](examples/config.example.json) to `~/.config/veil/config.json` (or let `init` write a minimal one) and keep only what you need. Without a config file there is one destination, `local` (OS keychain, `fallback: "ask"`: the page offers the encrypted store if the keychain fails). Check it with `veil check-config` and `veil doctor`.
 - Environment: `VEIL_HOME` (default `~/.config/veil`), `VEIL_CONFIG`, `VEIL_AGENT` (label written to the audit log), `VEIL_KEY_FILE` (key file for encrypted `.env`), `VEIL_POSTINSTALL`.
-- Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's own tools access to what this server protects, e.g. `"deny": ["Read(~/.config/veil/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
+- Recommended Claude Code hardening (`.claude/settings.json`): deny the agent's own tools access to what this server protects, e.g. `"deny": ["Read(~/.config/veil/**)", "Edit(~/.config/veil/**)", "Write(~/.config/veil/**)", "Bash(secret-tool:*)", "Bash(security:*)", "Read(**/.env)"]`.
 
 </details>
 
