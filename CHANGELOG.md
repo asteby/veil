@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
-## [0.2.0] - Unreleased
+## [0.2.1] - 2026-11-18
 
 ### Security
 - Auto mode: `secret_use` is no longer in the default `autoMode.kinds`; `autoMode.until` is required while enabled and must be at most 30 days ahead. Config refuses an enabled auto mode without it.

@@ -1,6 +1,6 @@
 {
   "name": "@asteby/veil",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Veil: an MCP server that lets an AI agent request, store and use credentials without ever seeing their values.",
   "license": "MIT",
   "author": "asteby",
@@ -13,7 +13,6 @@
     "url": "https://github.com/asteby/veil/issues"
   },
   "type": "module",
-  "packageManager": "pnpm@10.34.9",
   "bin": {
     "veil": "dist/cli.js",
     "veilform": "dist/cli.js"
