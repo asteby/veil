@@ -1,0 +1,46 @@
+name: Release
+
+# Publishes @asteby/veil to npm when a version tag is pushed, e.g. `git tag v0.2.2 && git push origin v0.2.2`.
+# Uses npm trusted publishing (OIDC): no npm token is stored in the repo.
+# One-time setup on npmjs.com: package @asteby/veil > Settings > Trusted publishing > GitHub Actions,
+# organization or user `asteby`, repository `veil`, workflow file `release.yml`.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC for npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Check the tag matches package.json
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          if [ "v$pkg" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version v$pkg" >&2
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - name: Trusted publishing needs npm >= 11.5.1
+        run: npm install -g npm@11
+      - name: Publish
+        run: npm publish --access public --provenance
