@@ -1,6 +1,6 @@
 {
   "name": "@asteby/veil",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Veil: an MCP server that lets an AI agent request, store and use credentials without ever seeing their values.",
   "license": "MIT",
   "author": "asteby",
